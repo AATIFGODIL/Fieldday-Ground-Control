@@ -26,23 +26,35 @@ cp server/.env.example server/.env   # then add your ANTHROPIC_API_KEY
 
 3. The app finds the AI server on port 8787 of the same host as Metro. Override with `EXPO_PUBLIC_API_URL=http://<host>:8787`.
 
-Without a development build the app still opens (including on web via `npx expo start --web`), but voice input falls back to typing and OS notifications become in-app banners.
+Without a development build the app still opens in Expo Go (`npx expo start --go`) and on the web (`npx expo start --web`). In Expo Go the mic button opens the keyboard so you can use the phone's own dictation; in a browser it uses the browser's speech recognition.
+
+## Design
+
+- **Black and white with a little royal colour.** Royal blue marks actions, violet marks anything the AI wrote, red and amber mark urgency. Light or dark follows the phone; the Demo menu can force either.
+- **Nothing smaller than 17 pt.** People read this on foot, in the sun, mid-incident.
+- **Calm motion.** Things fade in and settle on a long ease-out; nothing bounces. Entrance animations are off on web, where they start late.
+- **Bottom bar.** Apple's own Liquid Glass tab bar on iPhone (shrinks on scroll, press-and-drag between tabs). Web and Android use a floating dock with a sliding highlight you can drag, clamped to the bar.
+- **Fewer tabs.** Mo has *Now* and *Map*; volunteers have *Home*, *Report* and *Map*; location leads have *My zone* and *Map*. Placement, coverage, zones, availability and team live one level deeper under `src/app/tools/`.
 
 ## Demo script
 
-Sign in with festival ID **FD-2026**, choose **Kim Nguyen (safety lead)**, then tap the **DEMO** chip (top right) to open the demo panel. From there you can switch roles, reset scenarios, trigger scripted events, change sim speed (×1–×30), flip between simulated and live GPS, and force AI failures.
+First launch shows three intro screens, then **Show me how it works** starts the guided demo. A pinned card at the bottom says whose phone you're holding and what to tap; it switches person and screen for you. The **Demo** button (top right) restarts any story, switches person, changes light/dark, sim speed, position source and forces AI failures.
 
-**Scenario 1 — Heat collapse** (Sat 2 pm, 38°C)
-1. *Jordan & Mei no-show* → Kim gets a coverage alert: Water Station 0/2 first aid.
-2. *Report as Priya* → **Play scripted voice** (or tap the mic and speak) → Continue. AI structures the report; Priya must **confirm the urgency** (Critical) before it's logged.
-3. Switch to **Kim** → open INC-001 → AI-suggested response using the nearest available first-aiders (Sam ~70 m, then others) → **Approve & dispatch**.
-4. Switch to **Sam** → "You're needed" takeover, notification, and the spoken brief (short version because he's <100 m away; replay Standard/Full anytime) while his dot walks to the incident.
+**Story 1: Heat collapse** (Sat 2 pm, 38°C)
+1. Mo, the safety lead, sees an empty *Now* screen.
+2. Jordan and Mei (the Water Station first-aiders) don't check in, and Mo gets a "Water Station is short" card.
+3. As **Priya**, play the example voice report and continue. AI writes it up; Priya confirms the urgency herself.
+4. Back as **Mo**: the AI suggests the nearest free first-aiders (Sam, ~70 m, first). Mo can edit what each person is told, then approves.
+5. As **Sam**: the "You're needed" screen and a spoken brief sized to the walk (short, under 100 m). Sam's dot walks to the scene.
 
-**Scenario 2 — Possible duplicate** (Sat 8:30 pm, Lawn Stage)
-1. *Auto-submit* Tom's and Aisha's reports (opposite sides of the Lawn Stage).
-2. As **Kim**, both incidents show **POSSIBLY RELATED**; approval is blocked until you open **Compare side by side** and choose *Same incident — merge* or *Separate*.
+**Story 2: Possible duplicate** (Sat 8:30 pm, Lawn Stage)
+1. Tom and Aisha report what may be the same fight from opposite sides of the stage.
+2. Both incidents are flagged; nobody can be sent until Mo compares them side by side and chooses *Same thing · merge* or *Two separate things*.
 
-Other things to show: location-lead escalation (sign in as **Grace** or **Raj**, wait out the 30 s / 2 min window — use ×10), *Ben wanders off-site* (off-site alert after 60 s), Placement suggestions, Coverage, Zones editor, dragging dots on the Map, and the Audit log.
+**Story 3: When Mo is busy**
+1. A critical collapse is reported and Mo doesn't respond.
+2. As **Grace**, the Water Station lead, a countdown runs (sped up); after 30 seconds Grace can approve.
+3. Mo gets a "Someone stepped in for you" card, and the history records who decided.
 
 ## How it works
 
