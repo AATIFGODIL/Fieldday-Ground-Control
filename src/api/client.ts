@@ -8,6 +8,8 @@ import type {
   PlacementResult,
   RelatedCheckRequest,
   RelatedCheckResult,
+  StaffingRequest,
+  StaffingResult,
   StructureIncidentRequest,
   StructuredIncident,
   SuggestResponseRequest,
@@ -56,6 +58,7 @@ export const api = {
   relatedCheck: (b: RelatedCheckRequest) => post<RelatedCheckResult>('/ai/related-check', b, 13_000),
   brief: (b: BriefRequest) => post<BriefResult>('/ai/brief', b, 18_000),
   placement: (b: PlacementRequest) => post<PlacementResult>('/ai/placement', b, 35_000),
+  staffing: (b: StaffingRequest) => post<StaffingResult>('/ai/staffing', b, 28_000),
   health: async (): Promise<{ ok: boolean; hasKey?: boolean }> => {
     try {
       const res = await fetch(`${apiBaseUrl()}/health`);

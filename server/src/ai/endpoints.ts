@@ -3,19 +3,22 @@ import {
   checkBrief,
   checkRelated,
   checkStructuredIncident,
+  checkStaffingResult,
   checkSuggestedResponse,
   PlacementResult,
   RelatedCheckResult,
   StructuredIncident,
+  StaffingResult,
   SuggestedResponse,
   type BriefRequest,
   type PlacementRequest,
   type RelatedCheckRequest,
   type StructureIncidentRequest,
+  type StaffingRequest,
   type SuggestResponseRequest,
 } from '../../../src/domain/ai-contracts';
 
-import { callAI, HAIKU, SONNET, type Chaos } from './call-ai';
+import { callAI, HAIKU, OPUS, SONNET, type Chaos } from './call-ai';
 
 const CONTEXT = `You support ground control at Fieldday, an outdoor music festival in Sydney, Australia. About 300 volunteers are spread across the site, each zone has a location lead, and a single safety lead oversees everyone. Emergency services in Australia are reached on 000; there are on-site paramedics at the First Aid Tent.`;
 
@@ -228,6 +231,51 @@ ${req.volunteers.join('\n')}`;
     },
     timeoutMs: 30000,
     maxTokens: 6000,
+    chaos,
+  });
+}
+
+/* --------------------------------- staffing --------------------------------- */
+
+const STAFFING_SYSTEM = `${CONTEXT}
+
+The safety lead is on foot and tells you, in a sentence, how they want skills spread across the site right now (for example "more de-escalation at the Lawn Stage for the headliner" or "the bars are slammed"). Turn that into new minimum numbers per zone and skill. You only propose numbers; the app works out who moves, and the safety lead approves before anyone does.
+
+Skills (use these ids exactly):
+- first_aid: first aid certificate. Heat, collapses, injuries.
+- deescalation: trained to calm tense situations. Big crowds, arguments, fights, intoxication.
+- security_licence: licensed security. Threats, fights, gates.
+- crowd_control: crowd management. Packed areas, evacuations, storms, crushes.
+- rsa: Responsible Service of Alcohol. Bars.
+- wwcc: Working With Children Check. Kids zone, lost children.
+- null: general headcount (any volunteer).
+
+Rules:
+- Each zone shows how many people with each skill are there now ("here") and its current minimum ("min").
+- Only change the zones and skills the request is about. Give the new minimum as an absolute number, not a difference.
+- "More" means more than are there now: set the minimum above the "here" number (a big crowd usually means 2 to 4 more of a skill, plus a few more people overall). "Fewer" means a lower minimum. Never more than 80.
+- If they ask for fewer, lower the number. If they name a time ("for the headliner"), still set the numbers now; they'll end it later.
+- summary: at most 6 words, a title for the change (for example "Headliner at the Lawn Stage").
+- note: one plain sentence, at most 15 words, telling the people who move what's going on.
+- If the request isn't about where staff or skills should be, set understood to false and explain briefly in reasonIfNot.`;
+
+export function staffing(req: StaffingRequest, chaos: Chaos) {
+  const user = `Local time: ${req.localTime}, ${req.temperatureC}°C
+
+Zones (id | name | kind | here now / current minimum, per skill):
+${req.zones.map((z) => `${z.id} | ${z.name} | ${z.kind} | ${z.targets}`).join('\n')}
+
+The safety lead says: "${req.instruction}"`;
+  return callAI({
+    name: 'staffing',
+    model: OPUS,
+    effort: 'low',
+    system: STAFFING_SYSTEM,
+    user,
+    schema: StaffingResult,
+    check: (out) => checkStaffingResult(out, req),
+    timeoutMs: 25000,
+    maxTokens: 4000,
     chaos,
   });
 }

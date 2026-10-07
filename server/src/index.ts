@@ -10,13 +10,14 @@ import {
   BriefRequest,
   PlacementRequest,
   RelatedCheckRequest,
+  StaffingRequest,
   StructureIncidentRequest,
   SuggestResponseRequest,
   type AIResult,
 } from '../../src/domain/ai-contracts';
 
 import { chaosFrom, type Chaos } from './ai/call-ai';
-import { brief, placement, relatedCheck, structureIncident, suggestResponse } from './ai/endpoints';
+import { brief, placement, relatedCheck, staffing, structureIncident, suggestResponse } from './ai/endpoints';
 import { warmUp } from './ai/warmup';
 
 const app = new Hono();
@@ -49,6 +50,7 @@ route('/ai/suggest-response', SuggestResponseRequest, suggestResponse);
 route('/ai/related-check', RelatedCheckRequest, relatedCheck);
 route('/ai/brief', BriefRequest, brief);
 route('/ai/placement', PlacementRequest, placement);
+route('/ai/staffing', StaffingRequest, staffing);
 
 const port = Number(process.env.PORT ?? 8787);
 serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }, () => {

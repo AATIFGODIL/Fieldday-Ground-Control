@@ -7,12 +7,13 @@ import type { AIResult } from '../../../src/domain/ai-contracts';
 
 export const HAIKU = 'claude-haiku-4-5-20251001';
 export const SONNET = 'claude-sonnet-5-5';
+export const OPUS = 'claude-opus-5-5';
 
 const client = new Anthropic({ maxRetries: 1 });
 
 interface CallOptions<S extends z.ZodType> {
   name: string;
-  model: typeof HAIKU | typeof SONNET;
+  model: typeof HAIKU | typeof SONNET | typeof OPUS;
   system: string;
   user: string;
   schema: S;
@@ -20,7 +21,7 @@ interface CallOptions<S extends z.ZodType> {
   check?: (out: z.infer<S>) => string | null;
   timeoutMs: number;
   maxTokens: number;
-  /** Sonnet only. */
+  /** Sonnet and Opus only. */
   effort?: 'low' | 'medium' | 'high';
   /** Demo/testing: force a failure mode to exercise the fallback paths. */
   chaos?: Chaos;
@@ -53,10 +54,10 @@ export async function callAI<S extends z.ZodType>(opts: CallOptions<S>): Promise
   let parsed: unknown;
   let stopReason: string | null | undefined;
   try {
-    if (opts.model === SONNET) {
+    if (opts.model !== HAIKU) {
       const res = await client.beta.messages.parse(
         {
-          model: SONNET,
+          model: opts.model,
           max_tokens: opts.maxTokens,
           betas: ['server-side-fallback-2026-07-01'],
           fallbacks: 'default',

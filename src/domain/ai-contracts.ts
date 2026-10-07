@@ -224,3 +224,58 @@ export const PlacementResult = z.object({
   zoneNotes: z.array(z.object({ zoneId: z.string(), note: z.string() })),
 });
 export type PlacementResult = z.infer<typeof PlacementResult>;
+
+/* --------------------------------- staffing --------------------------------- */
+
+/** "More de-escalation at the Lawn Stage for the headliner" → new minimums. */
+export const StaffingRequest = z.object({
+  instruction: z.string().min(1).max(500),
+  localTime: z.string(),
+  temperatureC: z.number(),
+  zones: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      kind: z.string(),
+      /** Who's there and the current minimum, e.g. "people 30 here / min 6, deescalation 7 here / min 0". */
+      targets: z.string(),
+    }),
+  ),
+});
+export type StaffingRequest = z.infer<typeof StaffingRequest>;
+
+export const StaffingResult = z.object({
+  understood: z.boolean(),
+  reasonIfNot: z.string().nullable(),
+  /** Short title for the change card, e.g. "Headliner at the Lawn Stage". */
+  summary: z.string(),
+  /** One sentence told to the volunteers who move. */
+  note: z.string(),
+  changes: z.array(
+    z.object({
+      zoneId: z.string(),
+      /** null = headcount. */
+      skill: SkillSchema.nullable(),
+      /** The new minimum (absolute, not a difference). */
+      min: z.number().int(),
+    }),
+  ),
+});
+export type StaffingResult = z.infer<typeof StaffingResult>;
+
+export function checkStaffingResult(out: StaffingResult, req: StaffingRequest): string | null {
+  if (!out.understood) return out.reasonIfNot?.trim() ? null : 'not understood but no reason given';
+  if (out.changes.length === 0) return 'understood but no changes';
+  if (out.changes.length > 12) return 'too many changes';
+  const zones = new Set(req.zones.map((z) => z.id));
+  const seen = new Set<string>();
+  for (const c of out.changes) {
+    if (!zones.has(c.zoneId)) return `unknown zone ${c.zoneId}`;
+    if (c.min < 0 || c.min > 80) return `minimum ${c.min} out of range`;
+    const key = `${c.zoneId}|${c.skill}`;
+    if (seen.has(key)) return `${key} changed twice`;
+    seen.add(key);
+  }
+  if (!out.summary.trim() || !out.note.trim()) return 'missing summary or note';
+  return null;
+}
