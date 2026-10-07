@@ -53,6 +53,7 @@ export default function RootLayout() {
           }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="welcome" options={{ animation: 'fade' }} />
+          <Stack.Screen name="pitch" options={{ animation: 'fade' }} />
           <Stack.Screen name="join" />
           <Stack.Screen name="sign-in" />
           <Stack.Screen name="register" options={{ presentation: 'modal' }} />

@@ -38,9 +38,13 @@ export function DemoOverlay() {
   }, [banner]);
 
   const showDemoButton = !!user && !tour.scenario && onTabScreen(pathname);
+  const onPitch = pathname.startsWith('/pitch');
   // Sit just above the tab bar (Apple's on iPhone, the floating dock elsewhere).
   const tabBar = onTabScreen(pathname) ? (Platform.OS === 'ios' ? 58 : Math.max(insets.bottom, 12) - insets.bottom + 88) : 4;
   const bottom = insets.bottom + tabBar;
+
+  // The pitch is a presentation: no app chrome over it.
+  if (onPitch) return null;
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
