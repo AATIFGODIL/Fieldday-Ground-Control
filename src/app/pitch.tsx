@@ -2,7 +2,7 @@
  * The pitch: problem, evidence, solution, live demo, close.
  *
  * Ground Control's own look: Apple's system type, muted solid colour slides
- * (sand, dark plum, brick) between off-white and near-black ones, 3D
+ * (sand, dark plum, dark blue) between off-white and near-black ones, 3D
  * extruded titles, a radio transcript that types itself and cuts out, and a
  * tilted 3D festival map with a responder walking to an incident.
  *
@@ -31,7 +31,7 @@ import { Glyph } from '@/components/ui/glyph';
 
 /* ----------------------------- look and type ----------------------------- */
 
-type Theme = 'light' | 'dark' | 'sand' | 'plum' | 'brick';
+type Theme = 'light' | 'dark' | 'sand' | 'plum' | 'midnight';
 
 interface Colors {
   bg: string;
@@ -51,7 +51,7 @@ const PALETTE: Record<Theme, Colors> = {
   dark: { bg: '#0B0B0C', ink: '#F2F1EE', grey: '#8E8C87', muted: '#A9A7A1', accent: '#9AA6D6', fill: '#1B1B1D', depth: '#2E3A66', offscript: '#E0A458' },
   sand: { bg: '#D8C7A6', ink: '#1F1C17', grey: '#5E5240', muted: '#3F3729', accent: '#1F1C17', fill: 'rgba(31,28,23,0.08)', depth: '#B8A27C', offscript: '#1F1C17' },
   plum: { bg: '#2A1E3B', ink: '#F4F1EA', grey: '#C3B9D6', muted: '#E1DBEA', accent: '#E3C27A', fill: 'rgba(244,241,234,0.1)', depth: '#170F22', offscript: '#E3C27A' },
-  brick: { bg: '#8F3A32', ink: '#F7EFE8', grey: '#E8C9C2', muted: '#F2DDD7', accent: '#F7EFE8', fill: 'rgba(247,239,232,0.14)', depth: '#55211C', offscript: '#F2D49B' },
+  midnight: { bg: '#15233F', ink: '#F4F1EA', grey: '#B6C0D8', muted: '#DCE1EC', accent: '#F4F1EA', fill: 'rgba(244,241,234,0.1)', depth: '#0A1226', offscript: '#E3C27A' },
 };
 
 /** Apple's own typeface: San Francisco on Apple devices, the closest system face elsewhere. */
@@ -617,7 +617,7 @@ const SLIDES: Slide[] = [
 
   /* ===== 03 Build ===== */
   {
-    theme: 'brick',
+    theme: 'midnight',
     turn: true,
     hasButton: true,
     notes:
