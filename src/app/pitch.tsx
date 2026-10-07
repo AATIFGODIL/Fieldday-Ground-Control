@@ -7,7 +7,6 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions, type TextStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 
 import { Glyph } from '@/components/ui/glyph';
 import { EASE_OUT } from '@/constants/motion';
@@ -146,7 +145,6 @@ interface Slide {
   id: string;
   chapter?: string;
   accent: string;
-  glow: [string, string];
   center?: boolean;
   render: (s: Sizes) => ReactNode;
 }
@@ -155,7 +153,6 @@ const SLIDES: Slide[] = [
   {
     id: 'cover',
     accent: C.blue,
-    glow: [C.blue, C.violet],
     center: true,
     render: (s) => (
       <>
@@ -176,7 +173,6 @@ const SLIDES: Slide[] = [
     id: 'moment',
     chapter: '01 · The moment',
     accent: C.orange,
-    glow: [C.orange, C.pink],
     render: (s) => (
       <>
         <Head s={s} size="giant">
@@ -190,7 +186,6 @@ const SLIDES: Slide[] = [
     id: 'problem',
     chapter: '01 · The problem',
     accent: C.pink,
-    glow: [C.pink, C.violet],
     render: (s) => (
       <>
         <Head s={s} size="title">
@@ -207,7 +202,6 @@ const SLIDES: Slide[] = [
     id: 'scale',
     chapter: '01 · The problem',
     accent: C.teal,
-    glow: [C.teal, C.blue],
     render: (s) => (
       <>
         <Head s={s} size="title">
@@ -232,7 +226,6 @@ const SLIDES: Slide[] = [
     id: 'solution',
     chapter: '02 · The solution',
     accent: C.violet,
-    glow: [C.violet, C.orange],
     render: (s) => (
       <>
         <Head s={s} size="giant">
@@ -250,7 +243,6 @@ const SLIDES: Slide[] = [
     id: 'how',
     chapter: '02 · How it works',
     accent: C.blue,
-    glow: [C.blue, C.green],
     render: (s) => (
       <>
         <Head s={s} size="title">
@@ -277,7 +269,6 @@ const SLIDES: Slide[] = [
     id: 'ai',
     chapter: '03 · Use of AI',
     accent: C.violet,
-    glow: [C.violet, C.blue],
     render: (s) => (
       <>
         <Head s={s} size="title">
@@ -304,7 +295,6 @@ const SLIDES: Slide[] = [
     id: 'control',
     chapter: '03 · A person always decides',
     accent: C.green,
-    glow: [C.green, C.blue],
     render: (s) => (
       <>
         <Head s={s} size="title">
@@ -337,7 +327,6 @@ const SLIDES: Slide[] = [
     id: 'brief',
     chapter: '04 · Built for the moment',
     accent: C.orange,
-    glow: [C.orange, C.pink],
     render: (s) => (
       <>
         <Head s={s} size="title">
@@ -370,7 +359,6 @@ const SLIDES: Slide[] = [
     id: 'duplicates',
     chapter: '04 · Built for the moment',
     accent: C.pink,
-    glow: [C.pink, C.violet],
     render: (s) => (
       <>
         <Head s={s} size="title">
@@ -386,7 +374,6 @@ const SLIDES: Slide[] = [
     id: 'staffing',
     chapter: '04 · Built for the moment',
     accent: C.teal,
-    glow: [C.teal, C.green],
     render: (s) => (
       <>
         <Head s={s} size="title">
@@ -402,7 +389,6 @@ const SLIDES: Slide[] = [
     id: 'design',
     chapter: '04 · Built for the moment',
     accent: C.blue,
-    glow: [C.blue, C.violet],
     render: (s) => (
       <>
         <Head s={s} size="title">
@@ -428,7 +414,6 @@ const SLIDES: Slide[] = [
     id: 'leftout',
     chapter: '05 · What we left out',
     accent: C.teal,
-    glow: [C.blue, C.teal],
     render: (s) => (
       <>
         <Head s={s} size="title">
@@ -452,7 +437,6 @@ const SLIDES: Slide[] = [
   {
     id: 'close',
     accent: C.violet,
-    glow: [C.violet, C.orange],
     center: true,
     render: (s) => (
       <>
@@ -481,26 +465,6 @@ const SLIDES: Slide[] = [
 ];
 
 /* ------------------------------------ page ------------------------------------ */
-
-function Glow({ colors, s }: { colors: [string, string]; s: Sizes }) {
-  const r = Math.max(s.width, s.height) * 0.55;
-  return (
-    <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width={s.width} height={s.height}>
-      <Defs>
-        <RadialGradient id="g1" cx="50%" cy="50%" r="50%">
-          <Stop offset="0" stopColor={colors[0]} stopOpacity={0.42} />
-          <Stop offset="1" stopColor={colors[0]} stopOpacity={0} />
-        </RadialGradient>
-        <RadialGradient id="g2" cx="50%" cy="50%" r="50%">
-          <Stop offset="0" stopColor={colors[1]} stopOpacity={0.34} />
-          <Stop offset="1" stopColor={colors[1]} stopOpacity={0} />
-        </RadialGradient>
-      </Defs>
-      <Circle cx={s.width * 0.9} cy={s.height * 0.05} r={r} fill="url(#g1)" />
-      <Circle cx={s.width * 0.05} cy={s.height * 1.0} r={r * 0.9} fill="url(#g2)" />
-    </Svg>
-  );
-}
 
 export default function Pitch() {
   const s = useSizes();
@@ -562,7 +526,6 @@ export default function Pitch() {
 
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
-      <Glow key={slide.id} colors={slide.glow} s={s} />
       <GestureDetector gesture={swipe}>
         <Animated.View
           style={[
