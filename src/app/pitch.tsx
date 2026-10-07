@@ -1,26 +1,29 @@
 /**
- * The pitch, as a keynote: hook, problem, evidence, solution, how it works.
- * Apple's system type, white on black, one quiet accent. Arrow keys, space or
- * swipe to move. Lives at /pitch.
+ * The pitch: problem, evidence, solution, live demo, close. One idea per
+ * slide, Apple's system type, light and dark slides with one quiet accent.
+ *
+ * Motion follows the Payback deck: each line rises in, unblurs and staggers;
+ * the slide leaves in the direction you're going; the background eases
+ * between light and dark; numbers count up.
+ *
+ * Keys: → / space / enter next, ← back, F full screen, N speaker notes.
+ * Click the left quarter to go back, anywhere else to go on. Lives at /pitch.
  */
 import { router } from 'expo-router';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions, type TextStyle } from 'react-native';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type TextStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
-
-import { Glyph } from '@/components/ui/glyph';
-import { EASE_OUT } from '@/constants/motion';
+import Animated, { Easing, interpolateColor, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 
 /* ----------------------------- look and type ----------------------------- */
 
-const BG = '#000000';
-const INK = '#F5F5F7';
-const SOFT = '#A1A1A6';
-const FAINT = '#86868B';
-/** The one accent, used sparingly: a word or a number per slide at most. */
-const BLUE = '#2997FF';
-/** Offscript's own colour. */
+type Theme = 'light' | 'dark';
+
+const PALETTE = {
+  light: { bg: '#FFFFFF', ink: '#1D1D1F', grey: '#86868B', muted: '#6E6E73', accent: '#0071E3', fill: '#F5F5F7', line: '#D2D2D7' },
+  dark: { bg: '#000000', ink: '#F5F5F7', grey: '#86868B', muted: '#A1A1A6', accent: '#2997FF', fill: '#1C1C1E', line: '#2C2C2E' },
+};
+/** Offscript's own colour (only ever on dark slides). */
 const OFFSCRIPT_ORANGE = '#FF9F0A';
 
 /** Apple's own typeface: San Francisco on Apple devices, the closest system face elsewhere. */
@@ -36,6 +39,7 @@ const OFFSCRIPT: TextStyle = Platform.select<TextStyle>({
 });
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const WEB = Platform.OS === 'web';
 
 function useSizes() {
   const { width, height } = useWindowDimensions();
@@ -44,448 +48,421 @@ function useSizes() {
     width,
     height,
     phone: width < 700,
-    giant: clamp(w * 0.088, 46, 140),
-    title: clamp(w * 0.06, 34, 96),
-    lead: clamp(w * 0.024, 21, 36),
-    body: clamp(w * 0.018, 19, 28),
-    label: clamp(w * 0.014, 17, 22),
-    pad: clamp(width * 0.08, 24, 144),
+    mega: clamp(w * 0.1, 50, 176),
+    h: clamp(w * 0.064, 38, 112),
+    h2: clamp(w * 0.05, 32, 80),
+    sub: clamp(w * 0.026, 22, 44),
+    label: clamp(w * 0.0155, 18, 24),
+    pad: clamp(width * 0.075, 24, 128),
   };
 }
 type Sizes = ReturnType<typeof useSizes>;
 
+/** The current slide's colours, for the blocks below. */
+const ThemeCtx = createContext(PALETTE.light);
+const useColors = () => useContext(ThemeCtx);
+
 /* --------------------------------- motion --------------------------------- */
 
-/** One line of a slide: fades in and rises into place, after the lines before it. */
-function Reveal({ order, children, center }: { order: number; children: ReactNode; center?: boolean }) {
+const EASE = Easing.bezier(0.2, 0.8, 0.2, 1);
+
+/**
+ * One line of a slide: rises, fades and unblurs into place. `order` staggers
+ * the lines (0.14 s apart, after 0.15 s), like the Payback deck.
+ */
+function Rise({ order, children, center }: { order: number; children: ReactNode; center?: boolean }) {
   const v = useSharedValue(0);
   useEffect(() => {
-    v.set(withDelay(120 + order * 140, withTiming(1, { duration: 900, easing: EASE_OUT })));
+    v.set(withDelay(150 + order * 140, withTiming(1, { duration: 800, easing: EASE })));
   }, [v, order]);
-  const style = useAnimatedStyle(() => ({
-    opacity: v.get(),
-    transform: [{ translateY: (1 - v.get()) * 44 }],
-  }));
+  const style = useAnimatedStyle(() => {
+    const t = v.get();
+    return {
+      opacity: t,
+      transform: [{ translateY: (1 - t) * 36 }],
+      ...(WEB ? { filter: `blur(${(1 - t) * 10}px)` } : {}),
+    };
+  });
   return <Animated.View style={[{ alignSelf: center ? 'center' : 'stretch', alignItems: center ? 'center' : 'flex-start' }, style]}>{children}</Animated.View>;
+}
+
+/** A number that counts up from zero and always lands on the real value. */
+function CountUp({ to, delay = 400, style }: { to: number; delay?: number; style: TextStyle }) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const duration = 1300;
+    let raf = 0;
+    const begin = setTimeout(() => {
+      const start = Date.now();
+      const tick = () => {
+        const t = Math.min((Date.now() - start) / duration, 1);
+        setN(Math.round(to * (1 - Math.pow(1 - t, 3))));
+        if (t < 1) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    }, delay);
+    const land = setTimeout(() => setN(to), delay + duration + 150);
+    return () => {
+      clearTimeout(begin);
+      clearTimeout(land);
+      cancelAnimationFrame(raf);
+    };
+  }, [to, delay]);
+  return <Text style={[style, { fontVariant: ['tabular-nums'] }]}>{n.toLocaleString('en-AU')}</Text>;
 }
 
 /* ------------------------------- building blocks ------------------------------- */
 
-const Eyebrow = ({ s, children }: { s: Sizes; children: ReactNode }) => (
-  <Text style={{ fontFamily: APPLE, color: SOFT, fontSize: s.label * 1.1, fontWeight: '600', letterSpacing: 0.2 }}>{children}</Text>
-);
+const t = (s: Sizes, px: number, weight: TextStyle['fontWeight'], color: string, extra?: TextStyle): TextStyle => ({
+  fontFamily: APPLE,
+  fontSize: px,
+  lineHeight: px * (px > 60 ? 1.04 : px > 36 ? 1.1 : 1.3),
+  fontWeight: weight,
+  letterSpacing: px > 36 ? -px * 0.028 : -px * 0.01,
+  color,
+  ...extra,
+});
 
-function Head({ s, size, children, center }: { s: Sizes; size: 'giant' | 'title'; children: ReactNode; center?: boolean }) {
-  const px = s[size];
+function Section({ s, n, name }: { s: Sizes; n: string; name: string }) {
+  const c = useColors();
+  return <Text style={t(s, s.label, '700', c.accent, { letterSpacing: 0.4 })}>{`${n} · ${name}`}</Text>;
+}
+
+function Big({ s, size, children, max }: { s: Sizes; size: 'mega' | 'h' | 'h2' | 'sub'; children: ReactNode; max?: number }) {
+  const c = useColors();
   return (
-    <Text
-      style={{
-        fontFamily: APPLE,
-        color: INK,
-        fontSize: px,
-        lineHeight: px * 1.06,
-        fontWeight: '700',
-        letterSpacing: -px * 0.028,
-        textAlign: center ? 'center' : 'left',
-        maxWidth: s.phone ? undefined : s.width * 0.82,
-      }}>
-      {children}
+    <Text style={[t(s, s[size], size === 'sub' ? '600' : '700', c.ink), { maxWidth: s.phone || !max ? undefined : s.width * max }]}>{children}</Text>
+  );
+}
+
+/** Words in the grey that sits beside white or black. */
+function Grey({ children }: { children: ReactNode }) {
+  const c = useColors();
+  return <Text style={{ color: c.grey }}>{children}</Text>;
+}
+
+function Muted({ s, children, max = 0.66 }: { s: Sizes; children: ReactNode; max?: number }) {
+  const c = useColors();
+  return <Text style={[t(s, s.sub, '600', c.muted), { maxWidth: s.phone ? undefined : s.width * max }]}>{children}</Text>;
+}
+
+function Source({ s, children }: { s: Sizes; children: ReactNode }) {
+  const c = useColors();
+  return <Text style={[t(s, s.label, '500', c.grey), { maxWidth: s.phone ? undefined : s.width * 0.75 }]}>Source: {children}</Text>;
+}
+
+function Offscript({ s }: { s: Sizes }) {
+  const c = useColors();
+  return (
+    <Text style={t(s, s.sub, '600', c.ink)}>
+      A project by <Text style={[OFFSCRIPT, { color: OFFSCRIPT_ORANGE, fontSize: s.sub * 1.3, letterSpacing: 0 }]}>Offscript</Text>
     </Text>
   );
 }
 
-function Lead({ s, children, center, max = 0.62 }: { s: Sizes; children: ReactNode; center?: boolean; max?: number }) {
+function Card({ s, n, title, text }: { s: Sizes; n?: number; title: string; text: string }) {
+  const c = useColors();
   return (
-    <Text
-      style={{
-        fontFamily: APPLE,
-        color: SOFT,
-        fontSize: s.lead,
-        lineHeight: s.lead * 1.35,
-        fontWeight: '500',
-        letterSpacing: -s.lead * 0.01,
-        textAlign: center ? 'center' : 'left',
-        maxWidth: s.phone ? undefined : s.width * max,
-      }}>
-      {children}
-    </Text>
-  );
-}
-
-/** Where a number came from. Quiet, but never small. */
-const Source = ({ s, children }: { s: Sizes; children: ReactNode }) => (
-  <Text style={{ fontFamily: APPLE, color: FAINT, fontSize: s.label, lineHeight: s.label * 1.4, fontWeight: '500', maxWidth: s.phone ? undefined : s.width * 0.7 }}>
-    Source: {children}
-  </Text>
-);
-
-/** A word in white (on grey text) or in the one accent. */
-const White = ({ children }: { children: ReactNode }) => <Text style={{ color: INK }}>{children}</Text>;
-const Blue = ({ children }: { children: ReactNode }) => <Text style={{ color: BLUE }}>{children}</Text>;
-
-function Offscript({ size }: { size: number }) {
-  return (
-    <Text style={{ fontFamily: APPLE, color: INK, fontSize: size, fontWeight: '500', letterSpacing: -size * 0.01 }}>
-      A project by{' '}
-      <Text style={[OFFSCRIPT, { color: OFFSCRIPT_ORANGE, fontSize: size * 1.25, letterSpacing: 0 }]}>Offscript</Text>
-    </Text>
-  );
-}
-
-function Panel({ children, s }: { children: ReactNode; s: Sizes }) {
-  return (
-    <View style={{ flex: s.phone ? undefined : 1, borderRadius: 28, padding: clamp(s.width * 0.02, 20, 36), gap: 10, backgroundColor: '#1C1C1E' }}>
-      {children}
+    <View style={{ flex: s.phone ? undefined : 1, borderRadius: 32, padding: clamp(s.width * 0.02, 22, 32), gap: 12, backgroundColor: c.fill }}>
+      {n !== undefined && (
+        <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={t(s, 24, '700', '#FFFFFF')}>{n}</Text>
+        </View>
+      )}
+      <Text style={t(s, clamp(s.width * 0.022, 24, 36), '700', c.ink)}>{title}</Text>
+      <Text style={t(s, clamp(s.width * 0.016, 20, 26), '500', c.muted)}>{text}</Text>
     </View>
   );
 }
-const PanelTitle = ({ s, children }: { s: Sizes; children: ReactNode }) => (
-  <Text style={{ fontFamily: APPLE, color: INK, fontSize: s.lead, fontWeight: '700', letterSpacing: -s.lead * 0.015 }}>{children}</Text>
-);
-const PanelText = ({ s, children }: { s: Sizes; children: ReactNode }) => (
-  <Text style={{ fontFamily: APPLE, color: SOFT, fontSize: s.body, lineHeight: s.body * 1.4, fontWeight: '500' }}>{children}</Text>
-);
-function Row({ s, children }: { s: Sizes; children: ReactNode }) {
-  return <View style={{ flexDirection: s.phone ? 'column' : 'row', gap: clamp(s.width * 0.012, 12, 24), alignSelf: 'stretch' }}>{children}</View>;
+
+function Cards({ s, children }: { s: Sizes; children: ReactNode }) {
+  return <View style={{ flexDirection: s.phone ? 'column' : 'row', gap: 20, alignSelf: 'stretch', marginTop: 16 }}>{children}</View>;
 }
 
-/** A big figure with what it means underneath. */
-function Figure({ s, value, children }: { s: Sizes; value: string; children: ReactNode }) {
+function CTA({ s, title, onPress }: { s: Sizes; title: string; onPress: () => void }) {
+  const c = useColors();
   return (
-    <View style={{ gap: 8 }}>
-      <Text style={{ fontFamily: APPLE, color: BLUE, fontSize: s.giant * 1.25, lineHeight: s.giant * 1.25, fontWeight: '700', letterSpacing: -s.giant * 0.04 }}>
-        {value}
-      </Text>
-      <Text
-        style={{
-          fontFamily: APPLE,
-          color: INK,
-          fontSize: s.lead * 1.1,
-          lineHeight: s.lead * 1.4,
-          fontWeight: '600',
-          letterSpacing: -s.lead * 0.012,
-          maxWidth: s.phone ? undefined : s.width * 0.6,
-        }}>
-        {children}
-      </Text>
-    </View>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({ marginTop: 24, borderRadius: 999, paddingHorizontal: 44, minHeight: 76, justifyContent: 'center', backgroundColor: c.accent, opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}>
+      <Text style={t(s, clamp(s.width * 0.02, 22, 32), '700', '#FFFFFF')}>{title}</Text>
+    </Pressable>
   );
 }
 
 /* ---------------------------------- slides ---------------------------------- */
 
 interface Slide {
-  id: string;
-  chapter?: string;
+  theme: Theme;
   center?: boolean;
-  /** Each entry is one line that reveals in turn. */
+  /** Slides with a button don't advance on click (so the button gets it). */
+  hasButton?: boolean;
+  notes: string;
+  /** Each entry is one line that rises in turn. */
   lines: (s: Sizes) => ReactNode[];
 }
 
 const SLIDES: Slide[] = [
-  /* ---------- hook ---------- */
+  /* ===== 01 Problem ===== */
   {
-    id: 'hook',
-    chapter: '01 · Problem',
+    theme: 'light',
+    notes: 'Imagine you’re Mo, the safety lead at Riverside.',
     lines: (s) => [
-      <Head key="h" s={s} size="giant">
+      <Section key="sec" s={s} n="01" name="Problem" />,
+      <Big key="h" s={s} size="mega" max={0.85}>
         Imagine you’re Mo.
-      </Head>,
-      <Lead key="l" s={s}>
-        Safety lead at Riverside. Fifteen thousand people a day. Three hundred volunteers. One radio earpiece.
-      </Lead>,
+      </Big>,
+      <Muted key="m" s={s}>
+        Safety lead at Riverside. 15,000 people a day. 300 volunteers. One radio earpiece.
+      </Muted>,
     ],
   },
   {
-    id: 'moment',
-    chapter: '01 · Problem',
+    theme: 'light',
+    notes: 'Saturday, 2pm, 38 degrees. A call comes in: someone has collapsed at the water station. The two first-aiders rostered there never showed up.',
     lines: (s) => [
-      <Head key="h" s={s} size="giant">
-        2pm. <Blue>38°C.</Blue>
-      </Head>,
-      <Lead key="l" s={s}>
-        A call crackles in: someone has collapsed at the water station. The two first-aiders rostered there never showed up.
-      </Lead>,
+      <Big key="a" s={s} size="h">
+        2pm. <Grey>Saturday.</Grey>
+      </Big>,
+      <Big key="b" s={s} size="h">
+        38°C. <Grey>40 people queuing for water.</Grey>
+      </Big>,
+      <Big key="c" s={s} size="h">
+        Someone collapses. <Grey>The first-aiders never showed.</Grey>
+      </Big>,
     ],
   },
   {
-    id: 'gone',
-    chapter: '01 · Problem',
+    theme: 'dark',
+    notes: 'The call lasts a few seconds over a noisy radio, and then it’s gone. Who’s closest? Who’s trained? Has someone already reported it? Mo has to work it out on foot, from memory.',
     lines: (s) => [
-      <Head key="h" s={s} size="title">
-        Then the radio goes quiet.
-      </Head>,
-      <Lead key="l" s={s}>
-        The call lasted seconds and nobody wrote it down. <White>Who’s closest? Who’s trained? Has someone else already reported it?</White> Mo has
-        to work it out on foot.
-      </Lead>,
+      <Muted key="m" s={s}>
+        The call lasts seconds. Then:
+      </Muted>,
+      <Big key="h" s={s} size="h" max={0.8}>
+        “Who’s closest? Who’s trained? Did anyone else call it in?”
+      </Big>,
     ],
   },
-
-  /* ---------- evidence ---------- */
   {
-    id: 'astroworld',
-    chapter: '02 · What the record shows',
+    theme: 'light',
+    notes:
+      'This isn’t hypothetical. Ten people died at Astroworld in 2021. Texas’s concert safety task force named poor communication as a key factor: firefighters outside weren’t on the same radio as the event’s medics, they were given phone numbers instead.',
     lines: (s) => [
-      <Figure key="f" s={s} value="10">
-        people died at Astroworld in 2021. Texas’s task force named poor communication as a key factor.
-      </Figure>,
-      <Lead key="l" s={s}>
-        Firefighters outside weren’t on the same radio as the event’s medics. They were given phone numbers instead.
-      </Lead>,
+      <Big key="h" s={s} size="h2" max={0.8}>
+        When the radio fails, <Grey>people get hurt.</Grey>
+      </Big>,
+      <View key="n" style={{ gap: 8, marginTop: 16 }}>
+        <CountUp to={10} delay={600} style={t(s, clamp(s.width * 0.11, 64, 168), '700', PALETTE.light.accent)} />
+        <Text style={[t(s, s.sub, '600', PALETTE.light.ink), { maxWidth: s.phone ? undefined : s.width * 0.6 }]}>
+          people died at Astroworld in 2021. Medics and firefighters weren’t on the same radio.
+        </Text>
+      </View>,
       <Source key="src" s={s}>
         Texas Task Force on Concert Safety report, via KERA News (2022); Pollstar (2021).
       </Source>,
     ],
   },
   {
-    id: 'manchester',
-    chapter: '02 · What the record shows',
+    theme: 'dark',
+    notes:
+      'The Manchester Arena Inquiry said the emergency response was far below the standard it should have been, and that better coordination and communication might have saved one, possibly two lives.',
     lines: (s) => [
-      <Head key="h" s={s} size="title">
+      <Muted key="m" s={s}>
+        The Manchester Arena Inquiry, on the emergency response:
+      </Muted>,
+      <Big key="h" s={s} size="h" max={0.8}>
         “Far below the standard it should have been.”
-      </Head>,
-      <Lead key="l" s={s}>
-        The Manchester Arena Inquiry on the emergency response in 2017. Better coordination and <White>communication</White> might have saved one,
-        possibly two lives.
-      </Lead>,
+      </Big>,
       <Source key="src" s={s}>
         Manchester Arena Inquiry, Volume 2 (2022).
       </Source>,
     ],
   },
   {
-    id: 'demand',
-    chapter: '02 · What the record shows',
+    theme: 'light',
+    notes:
+      'And the load is real. A seven-year study of a large music festival found about 12 in every 1,000 people needed medical help, more on hot days. At Riverside’s size, that’s around 180 people a day, all coming in over the radio.',
     lines: (s) => [
-      <Figure key="f" s={s} value="12 in 1,000">
-        festival-goers needed medical help, in a seven-year study of one large festival. Hotter days brought more heat cases.
-      </Figure>,
-      <Lead key="l" s={s}>
-        At Riverside’s size, that rate would mean <White>around 180 people a day.</White>
-      </Lead>,
+      <Big key="h" s={s} size="h2" max={0.8}>
+        Every day at Riverside, <Grey>around</Grey>
+      </Big>,
+      <CountUp key="n" to={180} delay={500} style={t(s, clamp(s.width * 0.13, 72, 200), '700', PALETTE.light.accent)} />,
+      <Big key="s" s={s} size="sub">
+        people could need medical help.
+      </Big>,
       <Source key="src" s={s}>
-        Medical care at a mass gathering music festival, 2011–2017 (Wiener klinische Wochenschrift, 2021). Our estimate applies its median rate to
+        12 in 1,000 festival-goers, Medical care at a mass gathering music festival, 2011–2017 (Wiener klinische Wochenschrift, 2021). Our estimate for
         15,000 people.
       </Source>,
     ],
   },
 
-  /* ---------- solution ---------- */
+  /* ===== 02 Solution ===== */
   {
-    id: 'solution',
-    chapter: '03 · Solution',
+    theme: 'dark',
+    notes: 'So we built Ground Control.',
     lines: (s) => [
-      <Head key="h" s={s} size="giant">
-        Ground Control.
-      </Head>,
-      <Offscript key="o" size={s.lead * 1.15} />,
-      <Lead key="l" s={s}>
-        Every call heard. <White>Every decision human.</White>
-      </Lead>,
+      <Section key="sec" s={s} n="02" name="Solution" />,
+      <Muted key="meet" s={s}>
+        Meet
+      </Muted>,
+      <Big key="h" s={s} size="mega">
+        Ground Control<Text style={{ color: PALETTE.dark.accent }}>.</Text>
+      </Big>,
+      <Offscript key="o" s={s} />,
+      <Big key="tag" s={s} size="sub">
+        Every call heard. Every decision human.
+      </Big>,
     ],
   },
   {
-    id: 'how',
-    chapter: '03 · Solution',
+    theme: 'light',
+    notes:
+      'Four steps. A volunteer just says what they see. AI writes it up as a clear incident and checks whether someone already reported it. Mo sees the nearest people with the right skills and approves in one tap. Their phone tells them where to go, out loud, while they walk.',
     lines: (s) => [
-      <Head key="h" s={s} size="title">
-        From radio call to help, in four steps.
-      </Head>,
-      <Row key="r" s={s}>
-        {[
-          ['Say it', 'A volunteer just talks. No forms.'],
-          ['AI writes it up', 'A clear report, checked for duplicates.'],
-          ['Mo approves', 'The nearest people with the right skills, one tap.'],
-          ['Help arrives', 'Their phone says where to go, out loud.'],
-        ].map(([t, d], i) => (
-          <Panel key={t} s={s}>
-            <Text style={{ fontFamily: APPLE, color: FAINT, fontSize: s.label * 1.1, fontWeight: '700' }}>{i + 1}</Text>
-            <PanelTitle s={s}>{t}</PanelTitle>
-            <PanelText s={s}>{d}</PanelText>
-          </Panel>
-        ))}
-      </Row>,
+      <Big key="h" s={s} size="h2" max={0.8}>
+        From radio call to help, <Grey>in four steps.</Grey>
+      </Big>,
+      <Cards key="c" s={s}>
+        <Card s={s} n={1} title="Say it" text="A volunteer just talks. No forms." />
+        <Card s={s} n={2} title="AI writes it up" text="A clear report, checked for duplicates." />
+        <Card s={s} n={3} title="Mo approves" text="The nearest people with the right skills." />
+        <Card s={s} n={4} title="Help arrives" text="Their phone says where to go, out loud." />
+      </Cards>,
+    ],
+  },
+  {
+    theme: 'light',
+    notes:
+      'The AI does the legwork, but it never acts alone. Mo approves every response and every move. If a critical report gets no answer in 30 seconds, the zone’s location lead can step in, and Mo is told. Every decision is logged with a name.',
+    lines: (s) => [
+      <Big key="h" s={s} size="h2" max={0.8}>
+        AI does the legwork. <Grey>People make the calls.</Grey>
+      </Big>,
+      <Cards key="c" s={s}>
+        <Card s={s} title="Mo approves" text="Every response, and every change to who stands where." />
+        <Card s={s} title="Leads step in" text="Critical with no answer in 30 seconds? The zone’s lead can approve." />
+        <Card s={s} title="Everything logged" text="Who decided, what was sent, and when." />
+      </Cards>,
     ],
   },
 
-  /* ---------- how it works ---------- */
+  /* ===== 03 Build ===== */
   {
-    id: 'ai',
-    chapter: '04 · How it works',
+    theme: 'dark',
+    hasButton: true,
+    notes:
+      'DEMO (about 2 minutes). Open the app. First launch: tap “Show me how it works” (or Demo → Heat collapse). ' +
+      '1) Mo’s Now screen: the Water Station is short after two no-shows. ' +
+      '2) As Priya: play the example voice report, Continue. AI writes it up; Priya picks Critical and sends. ' +
+      '3) As Mo: open the incident. AI suggests Sam, about 70 m away, first aid. Edit what Sam is told if you like, then Approve and send. ' +
+      '4) As Sam: “You’re needed”, the brief is read aloud, and the dot walks over on the map. ' +
+      '5) Optional: Staff tab → “Concert at the Lawn Stage” → approve the moves. Or the second story: two fight reports → compare → merge. ' +
+      'Then press the browser’s Back button to return here.',
     lines: (s) => [
-      <Head key="h" s={s} size="title">
-        AI does the legwork. <Blue>People make the calls.</Blue>
-      </Head>,
-      <View key="list" style={{ gap: clamp(s.width * 0.01, 10, 18) }}>
-        {[
-          'Writes up voice reports in plain language',
-          'Suggests who to send, by distance and skill',
-          'Flags reports that may be the same incident',
-          'Briefs responders out loud, sized to their walk',
-          'Turns “more de-escalation at the Lawn Stage” into a plan',
-        ].map((line) => (
-          <View key={line} style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-            <Glyph name="check" size={s.body * 1.2} color={SOFT} strokeWidth={2.5} />
-            <Text style={{ fontFamily: APPLE, color: INK, fontSize: s.lead, fontWeight: '600', letterSpacing: -s.lead * 0.012, flexShrink: 1 }}>{line}</Text>
-          </View>
-        ))}
-      </View>,
+      <Section key="sec" s={s} n="03" name="Build" />,
+      <Big key="h" s={s} size="mega">
+        Live demo
+      </Big>,
+      <Muted key="m" s={s}>
+        Riverside · simulated festival, example data
+      </Muted>,
+      <CTA key="b" s={s} title="Open Ground Control →" onPress={() => router.push('/')} />,
     ],
   },
   {
-    id: 'control',
-    chapter: '04 · How it works',
+    theme: 'light',
+    notes:
+      'What we left out, on purpose. No chatbot: Mo needs decisions, not a conversation. No auto-dispatch: AI never sends anyone on its own. No freehand zone drawing: preset zones Mo can adjust are faster on the day.',
     lines: (s) => [
-      <Head key="h" s={s} size="title">
-        Nothing moves without a name on it.
-      </Head>,
-      <Row key="r" s={s}>
-        <Panel s={s}>
-          <PanelTitle s={s}>Mo approves</PanelTitle>
-          <PanelText s={s}>Every response, and every change to who stands where.</PanelText>
-        </Panel>
-        <Panel s={s}>
-          <PanelTitle s={s}>Leads step in</PanelTitle>
-          <PanelText s={s}>Critical and no answer in 30 seconds? The zone’s lead can approve.</PanelText>
-        </Panel>
-        <Panel s={s}>
-          <PanelTitle s={s}>Everything logged</PanelTitle>
-          <PanelText s={s}>Who decided, what was sent, and when.</PanelText>
-        </Panel>
-      </Row>,
+      <Big key="h" s={s} size="h2" max={0.8}>
+        What we left out, <Grey>on purpose.</Grey>
+      </Big>,
+      <Cards key="c" s={s}>
+        <Card s={s} title="A chatbot" text="Mo needs decisions, not a conversation." />
+        <Card s={s} title="Auto-dispatch" text="AI never sends anyone on its own." />
+        <Card s={s} title="Freehand zones" text="Preset zones Mo can adjust are faster on the day." />
+      </Cards>,
     ],
   },
   {
-    id: 'brief',
-    chapter: '04 · How it works',
-    lines: (s) => [
-      <Head key="h" s={s} size="title">
-        A brief that fits the walk.
-      </Head>,
-      <View key="t" style={{ alignSelf: 'stretch', maxWidth: s.phone ? undefined : s.width * 0.75 }}>
-        {[
-          ['Under 100 m', 'One sentence.'],
-          ['100 to 300 m', 'Where to go and what to expect.'],
-          ['Over 300 m', 'The full picture, and who to find.'],
-        ].map(([d, what], i) => (
-          <View
-            key={d}
-            style={{
-              flexDirection: s.phone ? 'column' : 'row',
-              gap: s.phone ? 4 : 32,
-              paddingVertical: clamp(s.width * 0.012, 14, 22),
-              borderTopWidth: i ? 1 : 0,
-              borderColor: '#2C2C2E',
-            }}>
-            <Text style={{ fontFamily: APPLE, color: INK, fontSize: s.lead, fontWeight: '700', width: s.phone ? undefined : s.lead * 7.5 }}>{d}</Text>
-            <Text style={{ fontFamily: APPLE, color: SOFT, fontSize: s.lead, fontWeight: '500', flexShrink: 1 }}>{what}</Text>
-          </View>
-        ))}
-      </View>,
-    ],
-  },
-  {
-    id: 'duplicates',
-    chapter: '04 · How it works',
-    lines: (s) => [
-      <Head key="h" s={s} size="title">
-        Two reports. One fight. <Blue>One response.</Blue>
-      </Head>,
-      <Lead key="l" s={s}>
-        Reports that sound alike, close in time and place, are linked. Mo compares them side by side before anyone is sent.
-      </Lead>,
-    ],
-  },
-  {
-    id: 'staffing',
-    chapter: '04 · How it works',
-    lines: (s) => [
-      <Head key="h" s={s} size="title">
-        Move skills, not just people.
-      </Head>,
-      <Lead key="l" s={s}>
-        Concert at the Lawn Stage? One tap asks for more de-escalation there. Or just say it. <White>Mo approves who moves,</White> and no zone is
-        left short.
-      </Lead>,
-    ],
-  },
-  {
-    id: 'leftout',
-    chapter: '05 · Choices',
-    lines: (s) => [
-      <Head key="h" s={s} size="title">
-        What we left out, on purpose.
-      </Head>,
-      <Row key="r" s={s}>
-        {[
-          ['A chatbot', 'Mo needs decisions, not a conversation.'],
-          ['Auto-dispatch', 'AI never sends anyone on its own.'],
-          ['Freehand zones', 'Preset zones Mo can adjust are faster on the day.'],
-        ].map(([t, why]) => (
-          <Panel key={t} s={s}>
-            <PanelTitle s={s}>{t}</PanelTitle>
-            <PanelText s={s}>{why}</PanelText>
-          </Panel>
-        ))}
-      </Row>,
-    ],
-  },
-  {
-    id: 'close',
+    theme: 'dark',
     center: true,
+    notes: 'Every call heard. Every decision human. That’s Ground Control. Thank you.',
     lines: (s) => [
-      <Head key="h" s={s} size="giant" center>
-        Ground Control.
-      </Head>,
-      <Lead key="l" s={s} center>
-        Every call heard. <White>Every decision human.</White>
-      </Lead>,
-      <Offscript key="o" size={s.lead * 1.1} />,
-      <Pressable
-        key="b"
-        onPress={() => router.push('/')}
-        style={({ pressed }) => ({ marginTop: 16, borderRadius: 999, paddingHorizontal: 32, paddingVertical: 16, backgroundColor: BLUE, opacity: pressed ? 0.85 : 1 })}>
-        <Text style={{ fontFamily: APPLE, color: '#FFFFFF', fontSize: s.body, fontWeight: '700' }}>Open the app</Text>
-      </Pressable>,
+      <Muted key="m" s={s} max={0.9}>
+        Every call heard. Every decision human.
+      </Muted>,
+      <Big key="h" s={s} size="mega">
+        Ground Control<Text style={{ color: PALETTE.dark.accent }}>.</Text>
+      </Big>,
+      <Offscript key="o" s={s} />,
     ],
   },
 ];
 
-/* ------------------------------------ page ------------------------------------ */
+/* ------------------------------------ deck ------------------------------------ */
 
 export default function Pitch() {
   const s = useSizes();
-  const [shown, setShown] = useState(() => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return 0;
+  const [index, setIndex] = useState(() => {
+    if (!WEB || typeof window === 'undefined') return 0;
     const n = parseInt(window.location.hash.slice(1), 10);
     return Number.isFinite(n) ? clamp(n - 1, 0, SLIDES.length - 1) : 0;
   });
-  const slide = SLIDES[shown];
-  const busy = useSharedValue(false);
+  const [notes, setNotes] = useState(false);
+  const slide = SLIDES[index];
+  const colors = PALETTE[slide.theme];
 
-  // Leaving: the whole slide fades and drifts up, then the next one's lines rise in.
-  const out = useSharedValue(1);
-  const leaving = useAnimatedStyle(() => ({ opacity: out.get(), transform: [{ translateY: (out.get() - 1) * 30 }] }));
+  // Leaving: the slide drifts the way you're going, fades and blurs, then the next one rises in.
+  const leave = useSharedValue(0);
+  const dir = useSharedValue(1);
+  const busy = useSharedValue(false);
+  const sectionStyle = useAnimatedStyle(() => {
+    const p = leave.get();
+    return {
+      opacity: 1 - p,
+      transform: [{ translateY: p * (dir.get() > 0 ? -24 : 24) }],
+      ...(WEB ? { filter: `blur(${p * 8}px)` } : {}),
+    };
+  });
+
+  // The background eases between light and dark slides.
+  const dark = useSharedValue(slide.theme === 'dark' ? 1 : 0);
+  useEffect(() => {
+    dark.set(withTiming(slide.theme === 'dark' ? 1 : 0, { duration: 500 }));
+  }, [slide.theme, dark]);
+  const bgStyle = useAnimatedStyle(() => ({ backgroundColor: interpolateColor(dark.get(), [0, 1], [PALETTE.light.bg, PALETTE.dark.bg]) }));
+
+  // Progress line.
+  const progress = useSharedValue((index + 1) / SLIDES.length);
+  useEffect(() => {
+    progress.set(withTiming((index + 1) / SLIDES.length, { duration: 500, easing: EASE }));
+  }, [index, progress]);
+  const barStyle = useAnimatedStyle(() => ({ width: `${progress.get() * 100}%` }));
 
   const go = (delta: number) => {
-    const next = clamp(shown + delta, 0, SLIDES.length - 1);
-    if (next === shown || busy.get()) return;
+    const next = clamp(index + delta, 0, SLIDES.length - 1);
+    if (next === index || busy.get()) return;
     busy.set(true);
-    out.set(withTiming(0, { duration: 320, easing: Easing.in(Easing.quad) }));
+    dir.set(delta);
+    leave.set(withTiming(1, { duration: 250, easing: EASE }));
     setTimeout(() => {
-      setShown(next);
-      out.set(1);
+      setIndex(next);
+      leave.set(0);
       busy.set(false);
-    }, 330);
+    }, 260);
   };
 
-  // Keep the address in step (/pitch#3) and load Offscript's face on the web.
+  // Keep the slide in the address (/pitch#10), so Back from the demo returns here.
   useEffect(() => {
-    if (Platform.OS === 'web') window.history.replaceState(null, '', `#${shown + 1}`);
-  }, [shown]);
+    if (WEB) window.history.replaceState(null, '', `#${index + 1}`);
+  }, [index]);
+
+  // Offscript's face on the web.
   useEffect(() => {
-    if (Platform.OS !== 'web' || document.getElementById('offscript-face')) return;
+    if (!WEB || document.getElementById('offscript-face')) return;
     const link = document.createElement('link');
     link.id = 'offscript-face';
     link.rel = 'stylesheet';
@@ -493,13 +470,13 @@ export default function Pitch() {
     document.head.appendChild(link);
   }, []);
 
-  // Arrow keys, space and page keys, like a keynote.
+  // Keys, like a keynote.
   const goRef = useRef(go);
   useEffect(() => {
     goRef.current = go;
   });
   useEffect(() => {
-    if (Platform.OS !== 'web') return;
+    if (!WEB) return;
     const onKey = (e: KeyboardEvent) => {
       if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'].includes(e.key)) {
         e.preventDefault();
@@ -507,12 +484,21 @@ export default function Pitch() {
       } else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(e.key)) {
         e.preventDefault();
         goRef.current(-1);
+      } else if (e.key === 'f') {
+        if (document.fullscreenElement) void document.exitFullscreen();
+        else void document.documentElement.requestFullscreen();
+      } else if (e.key === 'n') {
+        setNotes((v) => !v);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  const tap = Gesture.Tap()
+    .runOnJS(true)
+    .enabled(!slide.hasButton)
+    .onEnd((e) => go(e.x < s.width * 0.25 ? -1 : 1));
   const swipe = Gesture.Pan()
     .runOnJS(true)
     .activeOffsetX([-30, 30])
@@ -520,42 +506,51 @@ export default function Pitch() {
       if (e.translationX < -60) go(1);
       else if (e.translationX > 60) go(-1);
     });
-  const tap = Gesture.Tap()
-    .runOnJS(true)
-    .enabled(slide.id !== 'close')
-    .onEnd((e) => go(e.x < s.width * 0.3 ? -1 : 1));
-
-  const lines = [...(slide.chapter ? [<Eyebrow key="eyebrow" s={s}>{slide.chapter}</Eyebrow>] : []), ...slide.lines(s)];
 
   return (
-    <View style={{ flex: 1, backgroundColor: BG }}>
-      <GestureDetector gesture={Gesture.Race(swipe, tap)}>
-        <Animated.View
-          style={[
-            {
-              flex: 1,
-              paddingHorizontal: s.pad,
-              paddingVertical: s.pad * 0.8,
-              justifyContent: 'center',
-              alignItems: slide.center ? 'center' : 'flex-start',
-              gap: clamp(s.width * 0.02, 18, 40),
-            },
-            leaving,
-          ]}>
-          {lines.map((line, i) => (
-            <Reveal key={`${slide.id}-${i}`} order={i} center={slide.center}>
-              {line}
-            </Reveal>
-          ))}
-        </Animated.View>
-      </GestureDetector>
-      <View style={styles.track}>
-        <View style={{ height: 3, width: `${((shown + 1) / SLIDES.length) * 100}%`, backgroundColor: INK, opacity: 0.7 }} />
-      </View>
-    </View>
+    <ThemeCtx.Provider value={colors}>
+      <Animated.View style={[{ flex: 1, overflow: 'hidden' }, bgStyle]}>
+        <GestureDetector gesture={Gesture.Race(swipe, tap)}>
+          <Animated.View
+            style={[
+              {
+                flex: 1,
+                paddingHorizontal: s.pad,
+                paddingVertical: 56,
+                justifyContent: 'center',
+                alignItems: slide.center ? 'center' : 'flex-start',
+                gap: clamp(s.width * 0.016, 14, 28),
+              },
+              sectionStyle,
+            ]}>
+            {slide.lines(s).map((line, i) => (
+              <Rise key={`${index}-${i}`} order={i} center={slide.center}>
+                {line}
+              </Rise>
+            ))}
+          </Animated.View>
+        </GestureDetector>
+
+        <View pointerEvents="none" style={styles.track}>
+          <Animated.View style={[{ height: 6, backgroundColor: colors.accent }, barStyle]} />
+        </View>
+
+        {notes && (
+          <View style={styles.notes}>
+            <ScrollView contentContainerStyle={{ padding: 32, gap: 12 }}>
+              <Text style={t(s, 24, '700', '#FFFFFF')}>
+                Notes · slide {index + 1} of {SLIDES.length}
+              </Text>
+              <Text style={t(s, 24, '500', '#FFFFFF', { lineHeight: 34 })}>{slide.notes}</Text>
+            </ScrollView>
+          </View>
+        )}
+      </Animated.View>
+    </ThemeCtx.Provider>
   );
 }
 
 const styles = StyleSheet.create({
-  track: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 3, backgroundColor: '#1C1C1E' },
+  track: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 6 },
+  notes: { position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '50%', backgroundColor: '#1C1C1E' },
 });
