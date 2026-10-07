@@ -1,14 +1,16 @@
 {
   "expo": {
-    "name": "Affinda-app",
+    "name": "Fieldday Ground Control",
     "slug": "Affinda-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "affindaapp",
+    "scheme": "fieldday",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.fielddayevents.groundcontrol",
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
@@ -17,10 +19,11 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.fielddayevents.groundcontrol"
     },
     "web": {
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -28,11 +31,35 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#1F7A4D",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow $(PRODUCT_NAME) to use the microphone so you can report incidents by voice.",
+          "speechRecognitionPermission": "Allow $(PRODUCT_NAME) to transcribe your voice incident reports on this device.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Your location is shared with the festival safety team only while you are checked in for a shift."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to take photos to attach to incident reports.",
+          "photosPermission": "Allow $(PRODUCT_NAME) to attach photos to incident reports."
+        }
+      ],
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,
