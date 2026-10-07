@@ -2,7 +2,7 @@
  * The pitch: problem, evidence, solution, live demo, close.
  *
  * Ground Control's own look: Apple's system type, muted solid colour slides
- * (sand, dusty navy, brick) between off-white and near-black ones, 3D
+ * (sand, dark plum, brick) between off-white and near-black ones, 3D
  * extruded titles, a radio transcript that types itself and cuts out, and a
  * tilted 3D festival map with a responder walking to an incident.
  *
@@ -31,7 +31,7 @@ import { Glyph } from '@/components/ui/glyph';
 
 /* ----------------------------- look and type ----------------------------- */
 
-type Theme = 'light' | 'dark' | 'sand' | 'navy' | 'brick';
+type Theme = 'light' | 'dark' | 'sand' | 'plum' | 'brick';
 
 interface Colors {
   bg: string;
@@ -50,7 +50,7 @@ const PALETTE: Record<Theme, Colors> = {
   light: { bg: '#FBFAF7', ink: '#1D1D1F', grey: '#8A8780', muted: '#6B6862', accent: '#3E4C8A', fill: '#F1EFEA', depth: '#DCDDE6', offscript: '#A4502A' },
   dark: { bg: '#0B0B0C', ink: '#F2F1EE', grey: '#8E8C87', muted: '#A9A7A1', accent: '#9AA6D6', fill: '#1B1B1D', depth: '#2E3A66', offscript: '#E0A458' },
   sand: { bg: '#D8C7A6', ink: '#1F1C17', grey: '#5E5240', muted: '#3F3729', accent: '#1F1C17', fill: 'rgba(31,28,23,0.08)', depth: '#B8A27C', offscript: '#1F1C17' },
-  navy: { bg: '#2E3A66', ink: '#F4F1EA', grey: '#B9BFD6', muted: '#DADCE6', accent: '#E3C27A', fill: 'rgba(244,241,234,0.1)', depth: '#1B2343', offscript: '#E3C27A' },
+  plum: { bg: '#2A1E3B', ink: '#F4F1EA', grey: '#C3B9D6', muted: '#E1DBEA', accent: '#E3C27A', fill: 'rgba(244,241,234,0.1)', depth: '#170F22', offscript: '#E3C27A' },
   brick: { bg: '#8F3A32', ink: '#F7EFE8', grey: '#E8C9C2', muted: '#F2DDD7', accent: '#F7EFE8', fill: 'rgba(247,239,232,0.14)', depth: '#55211C', offscript: '#F2D49B' },
 };
 
@@ -415,7 +415,7 @@ function IsoMap({ s }: { s: Sizes }) {
               height: `${z.h}%`,
               borderRadius: 8,
               backgroundColor: z.color,
-              shadowColor: '#141B33',
+              shadowColor: '#140D1E',
               shadowOpacity: 0.9,
               shadowRadius: 0,
               shadowOffset: { width: 6, height: 6 },
@@ -430,7 +430,7 @@ function IsoMap({ s }: { s: Sizes }) {
           <View style={{ position: 'absolute', left: -11, top: -11, width: 22, height: 22, borderRadius: 11, backgroundColor: '#E07A6E', borderWidth: 3, borderColor: '#F4F1EA' }} />
         </View>
         <Animated.View style={[{ position: 'absolute', width: 0, height: 0 }, responder]}>
-          <View style={{ position: 'absolute', left: -10, top: -10, width: 20, height: 20, borderRadius: 10, backgroundColor: '#E3C27A', borderWidth: 3, borderColor: '#1B2343' }} />
+          <View style={{ position: 'absolute', left: -10, top: -10, width: 20, height: 20, borderRadius: 10, backgroundColor: '#E3C27A', borderWidth: 3, borderColor: '#170F22' }} />
         </Animated.View>
       </Animated.View>
     </View>
@@ -553,7 +553,7 @@ const SLIDES: Slide[] = [
 
   /* ===== 02 Solution ===== */
   {
-    theme: 'navy',
+    theme: 'plum',
     turn: true,
     notes: 'So we built Ground Control. Every call heard, every decision human.',
     lines: (s) => [
@@ -866,6 +866,8 @@ export default function Pitch() {
                 flex: aside && !s.phone ? 1 : undefined,
                 alignSelf: slide.center ? 'center' : 'stretch',
                 alignItems: slide.center ? 'center' : 'flex-start',
+                // Beside an aside the column fills the slide's height, so centre its lines in it.
+                justifyContent: 'center',
                 gap: clamp(s.width * 0.016, 14, 28),
               }}>
               {lines}
