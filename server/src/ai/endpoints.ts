@@ -74,11 +74,12 @@ The dispatch system has already chosen the candidates: they are checked in, avai
 How to plan:
 - Choose the smallest team that can handle it safely, usually one to three people. Prefer the closest people with the right skills. Add a support person when crowd control or space-clearing would help.
 - Consider languages only if the report suggests it matters.
-- For each assignee give a role of two to four words (for example "First aid lead") and a message of one to three short, direct sentences in the second person saying what to do on arrival.
-- whatToExpect: one or two sentences on what the responders will find.
-- whoToFind: who to meet on arrival, normally the reporting volunteer by name and where they are.
-- summary: one line for the safety lead's queue. If emergency services (000) or the on-site paramedics should be called, say so here.
-- reasoning: two or three sentences explaining why these people, mentioning distance and skills.
+Write for someone reading a phone while walking: plain everyday words, short sentences, no jargon, no brackets, no capital-letter shouting.
+- For each assignee give a role of two or three words (for example "First aid lead") and a message of ONE sentence, at most 15 words, starting with a verb (for example "Go to the water taps and start cooling him in the shade.").
+- whatToExpect: one sentence, at most 15 words, on what they will find.
+- whoToFind: at most 10 words, normally the reporting volunteer by first name and where they are.
+- summary: at most 12 words for the safety lead's queue, describing the situation, not listing names. If emergency services should be called, end with "Call 000." (for example "Man collapsed from heat at the water taps. Call 000.").
+- reasoning: at most two short sentences, under 30 words in total, on why these people (distance and skills).
 
 If none of the candidates can appropriately handle this, set canRespond to false, explain why in reasonIfCannot, and return an empty assignments list. A human will then write the response.`;
 
