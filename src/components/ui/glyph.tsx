@@ -31,7 +31,11 @@ export type GlyphName =
   | 'phone'
   | 'cross'
   | 'pin'
-  | 'edit';
+  | 'edit'
+  | 'music'
+  | 'glass'
+  | 'sun'
+  | 'cloud';
 
 const PATHS: Record<GlyphName, (c: string) => ReactNode> = {
   home: () => (
@@ -134,6 +138,41 @@ const PATHS: Record<GlyphName, (c: string) => ReactNode> = {
     <>
       <Path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
       <Circle cx="12" cy="10" r="3" />
+    </>
+  ),
+  music: () => (
+    <>
+      <Path d="M9 18V5l12-2v13" />
+      <Circle cx="6" cy="18" r="3" />
+      <Circle cx="18" cy="16" r="3" />
+    </>
+  ),
+  glass: () => (
+    <>
+      <Path d="M6 2h12l-1.5 7a4.5 4.5 0 0 1-9 0z" />
+      <Line x1="12" y1="13.5" x2="12" y2="21" />
+      <Line x1="8" y1="21" x2="16" y2="21" />
+    </>
+  ),
+  sun: () => (
+    <>
+      <Circle cx="12" cy="12" r="5" />
+      <Line x1="12" y1="1" x2="12" y2="3" />
+      <Line x1="12" y1="21" x2="12" y2="23" />
+      <Line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+      <Line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <Line x1="1" y1="12" x2="3" y2="12" />
+      <Line x1="21" y1="12" x2="23" y2="12" />
+      <Line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+      <Line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </>
+  ),
+  cloud: () => (
+    <>
+      <Line x1="16" y1="13" x2="16" y2="21" />
+      <Line x1="8" y1="13" x2="8" y2="21" />
+      <Line x1="12" y1="15" x2="12" y2="23" />
+      <Path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" />
     </>
   ),
   edit: () => (
