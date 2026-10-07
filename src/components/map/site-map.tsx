@@ -1,33 +1,191 @@
 /**
- * The festival site plan: zones, volunteer dots, incidents and dispatch routes.
+ * The festival site plan: a riverside park with zones, people, incidents and
+ * the routes responders are walking.
  *
  * Positions come straight from the store, which is fed by either the
  * simulation or live GPS — the map does not know or care which.
+ *
+ * Static scenery is drawn once in SVG. Anything that moves (pulsing incidents,
+ * walking responders, the marching route line, "you are here") lives in light
+ * overlay views so it can animate smoothly without redrawing 300 dots.
  */
-import { useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Platform, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  FadeIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 import Svg, { Circle, G, Line, Polygon, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 
-import { Colors, RoleColors, SkillColors, UrgencyColors, ZoneColors } from '@/constants/theme';
+import { Colors, urgencyColor } from '@/constants/theme';
 import { centroid, dist, pointInPolygon } from '@/domain/geo';
-import type { Skill, Vec, Volunteer, Zone } from '@/domain/types';
+import type { Skill, Vec, Volunteer, Zone, ZoneKind } from '@/domain/types';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { moveDot, updateZone, useStore } from '@/state/store';
 
-/** Visible area in site metres, with margin outside the boundary for off-site dots. */
-const VB = { x: -30, y: -70, w: 660, h: 500 };
+/** Visible area in site metres: the park, the road to the north, the river to the south. */
+const VB = { x: -30, y: -60, w: 660, h: 545 };
 
-const LABEL_FONT = Platform.select({ web: 'system-ui, -apple-system, Roboto, sans-serif', default: undefined });
+const LABEL_FONT = Platform.select({ web: '-apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif', default: undefined });
 
 const SKILL_PRIORITY: Skill[] = ['first_aid', 'security_licence', 'crowd_control', 'wwcc', 'rsa'];
 
+/** Leads read darker than volunteers; certified volunteers a touch stronger than the rest. */
 export function dotColor(v: Volunteer): string {
-  if (v.role !== 'volunteer') return RoleColors[v.role];
-  const s = SKILL_PRIORITY.find((k) => v.skills.includes(k));
-  return SkillColors[s ?? 'none'];
+  if (v.role !== 'volunteer') return '#1E293B';
+  return SKILL_PRIORITY.some((k) => v.skills.includes(k)) ? '#2340D9' : '#5B76E8';
 }
+
+/* ------------------------------ map palette ------------------------------ */
+
+const MAP = {
+  light: {
+    outside: '#E8EBE3',
+    grass: '#D4E7C2',
+    grassEdge: '#B5D19C',
+    path: '#FFFFFF',
+    pathEdge: '#E0DAC8',
+    river: '#8DC4EE',
+    shore: '#C4E0F6',
+    riverLabel: '#2F6EA8',
+    road: '#D3D6DB',
+    roadLine: '#FFFFFF',
+    tree: '#8DBB78',
+    treeTop: '#A7CF93',
+    fence: '#55624F',
+    deck: '#2B2E33',
+    deckTop: '#41454C',
+    label: '#1A1C19',
+    halo: 'rgba(255,255,255,0.92)',
+    dot: '#2340D9',
+    dotStroke: '#FFFFFF',
+  },
+  dark: {
+    outside: '#0C0E0C',
+    grass: '#132116',
+    grassEdge: '#1D3321',
+    path: '#2A2E2A',
+    pathEdge: '#1E211E',
+    river: '#143A5E',
+    shore: '#1B4B75',
+    riverLabel: '#7FB5E6',
+    road: '#22252A',
+    roadLine: '#3A3E44',
+    tree: '#1D3A23',
+    treeTop: '#26492D',
+    fence: '#6B7A6D',
+    deck: '#4A4F57',
+    deckTop: '#5A6069',
+    label: '#EEF0EB',
+    halo: 'rgba(0,0,0,0.78)',
+    dot: '#7B93FF',
+    dotStroke: '#0C0E0C',
+  },
+} as const;
+
+const ZONE_TINT: Record<ZoneKind, { light: [string, string]; dark: [string, string] }> = {
+  stage: { light: ['#E6E0FF', '#7C6CF0'], dark: ['#29244A', '#8B7CF6'] },
+  water: { light: ['#D4EBFF', '#2F86D6'], dark: ['#122F4A', '#4FA3F0'] },
+  bar: { light: ['#FFF0CC', '#C99415'], dark: ['#382C10', '#E0B040'] },
+  food: { light: ['#FFE2D1', '#DD7438'], dark: ['#3C2317', '#F08A50'] },
+  washroom: { light: ['#ECEDEF', '#8E959F'], dark: ['#24262A', '#7A808A'] },
+  games: { light: ['#D5F2E7', '#249C74'], dark: ['#11322A', '#3CC08F'] },
+  kids: { light: ['#FFDFED', '#D94C91'], dark: ['#3A1929', '#F06AA8'] },
+  medical: { light: ['#FFE0E5', '#E11D48'], dark: ['#3C1720', '#FF4D6A'] },
+  gate: { light: ['#E2E6EC', '#4B5563'], dark: ['#21252B', '#9AA3B2'] },
+};
+
+/** Short names so labels stay big without colliding. */
+function mapName(z: Zone) {
+  return z.name
+    .replace('Washrooms ', 'WC ')
+    .replace(' Tent', '')
+    .replace(' Station', '')
+    .replace('Food Court', 'Food')
+    .replace('Kids Zone', 'Kids');
+}
+
+/* --------------------------- scenery (static) ---------------------------- */
+
+/** Deterministic tree scatter around the park edges. */
+const TREES: { x: number; y: number; r: number }[] = (() => {
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const out: { x: number; y: number; r: number }[] = [];
+  const area = (x0: number, x1: number, y0: number, y1: number, n: number) => {
+    for (let i = 0; i < n; i++) out.push({ x: x0 + rnd() * (x1 - x0), y: y0 + rnd() * (y1 - y0), r: 4 + rnd() * 4 });
+  };
+  area(-26, 2, -20, 400, 22);
+  area(598, 628, -20, 400, 22);
+  area(10, 590, -24, 2, 18);
+  area(10, 590, 396, 404, 14);
+  return out;
+})();
+
+const RIVER_TOP = Array.from({ length: 19 }, (_, i) => {
+  const x = -40 + i * 40;
+  return { x, y: 414 + 5 * Math.sin(x / 55) };
+});
+
+function pts(poly: Vec[]): string {
+  return poly.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+}
+
+const Scenery = memo(function Scenery({ dark, ppm, showLabels }: { dark: boolean; ppm: number; showLabels: boolean }) {
+  const m = dark ? MAP.dark : MAP.light;
+  const festival = useStore((s) => s.festival);
+  const label = 15 / ppm;
+  const river = [...RIVER_TOP, { x: 700, y: 520 }, { x: -40, y: 520 }];
+  const shore = RIVER_TOP.map((p) => ({ x: p.x, y: p.y - 6 }));
+  return (
+    <G>
+      <Rect x={-200} y={-200} width={1100} height={900} fill={m.outside} />
+      {/* Road along the north side */}
+      <Rect x={-60} y={-48} width={760} height={18} fill={m.road} />
+      <Line x1={-60} y1={-39} x2={700} y2={-39} stroke={m.roadLine} strokeWidth={1.2} strokeDasharray="8 8" />
+      {/* River along the south side */}
+      <Polygon points={pts([...shore, { x: 700, y: 520 }, { x: -40, y: 520 }])} fill={m.shore} />
+      <Polygon points={pts(river)} fill={m.river} />
+      {showLabels && (
+        <>
+          <SvgText x={300} y={458} fontSize={label * 1.05} fontStyle="italic" fontWeight="600" textAnchor="middle" fill={m.riverLabel} fontFamily={LABEL_FONT}>
+            Yarra River
+          </SvgText>
+          <SvgText x={300} y={-50} fontSize={label * 0.9} fontWeight="600" textAnchor="middle" fill={m.fence} fontFamily={LABEL_FONT}>
+            Riverside Drive
+          </SvgText>
+        </>
+      )}
+      {TREES.map((t, i) => (
+        <G key={i}>
+          <Circle cx={t.x} cy={t.y} r={t.r} fill={m.tree} />
+          <Circle cx={t.x - t.r * 0.25} cy={t.y - t.r * 0.25} r={t.r * 0.55} fill={m.treeTop} />
+        </G>
+      ))}
+      {/* The park */}
+      <Polygon points={pts(festival.boundary)} fill={m.grass} stroke={m.grassEdge} strokeWidth={3} />
+      {festival.walkways.edges.map(([a, b]) => {
+        const A = festival.walkways.nodes[a];
+        const B = festival.walkways.nodes[b];
+        return <Line key={`e${a}-${b}`} x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke={m.pathEdge} strokeWidth={11} strokeLinecap="round" />;
+      })}
+      {festival.walkways.edges.map(([a, b]) => {
+        const A = festival.walkways.nodes[a];
+        const B = festival.walkways.nodes[b];
+        return <Line key={`p${a}-${b}`} x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke={m.path} strokeWidth={8} strokeLinecap="round" />;
+      })}
+      <Polygon points={pts(festival.boundary)} fill="none" stroke={m.fence} strokeWidth={1.4} strokeDasharray="5 4" />
+    </G>
+  );
+});
+
+/* ------------------------------- the map -------------------------------- */
 
 export type MapMode = 'view' | 'operator' | 'zones';
 
@@ -39,8 +197,10 @@ type DragState =
 
 export interface SiteMapProps {
   mode?: MapMode;
-  /** Fixed height; width fills the container. */
+  /** Height of the map window. */
   height?: number;
+  /** Fill the window's height (wider than the screen; pan sideways). Used on the Map tab. */
+  tall?: boolean;
   /** Zoom the static view onto a region (used for mini maps). */
   focus?: { center: Vec; radius: number };
   interactive?: boolean;
@@ -58,6 +218,7 @@ export interface SiteMapProps {
 export function SiteMap({
   mode = 'view',
   height,
+  tall = false,
   focus,
   interactive = true,
   highlightIds,
@@ -71,57 +232,64 @@ export function SiteMap({
   showLabels = true,
 }: SiteMapProps) {
   const scheme = useColorScheme();
-  const t = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const dark = scheme === 'dark';
+  const t = Colors[dark ? 'dark' : 'light'];
+  const m = dark ? MAP.dark : MAP.light;
   const festival = useStore((s) => s.festival);
   const positions = useStore((s) => s.positions);
   const volunteers = useStore((s) => s.volunteers);
   const incidents = useStore((s) => s.incidents);
   const dispatches = useStore((s) => s.dispatches);
+  const movements = useStore((s) => s.movements);
   const currentUserId = useStore((s) => s.currentUserId);
 
-  const [width, setWidth] = useState(0);
+  const [W, setW] = useState(0);
   const [zoom, setZoom] = useState(1);
 
   const vb = focus
-    ? {
-        x: focus.center.x - focus.radius * 1.3,
-        y: focus.center.y - focus.radius,
-        w: focus.radius * 2.6,
-        h: focus.radius * 2,
-      }
+    ? { x: focus.center.x - focus.radius * 1.3, y: focus.center.y - focus.radius, w: focus.radius * 2.6, h: focus.radius * 2 }
     : VB;
-  const mapHeight = height ?? (width * vb.h) / vb.w;
-  const pxPerM = width / vb.w;
+  const staticMap = !!focus || !interactive;
 
-  // Pan/zoom transform (origin top-left): screen = t + s * local.
-  // Gesture state lives in shared values (read with get/set) so it is safe
-  // under React Compiler and visible to the UI thread for the transform.
+  // Window (W×H) and content (cw×ch at `ppm` pixels per metre).
+  const H = staticMap ? (height ?? 220) : tall ? (height ?? 520) : (W * vb.h) / vb.w;
+  const ppm = W === 0 ? 1 : staticMap ? Math.max(W / vb.w, H / vb.h) : tall ? H / vb.h : W / vb.w;
+  const cw = vb.w * ppm;
+  const ch = vb.h * ppm;
+  const ox = staticMap ? (W - cw) / 2 : 0;
+  const oy = staticMap ? (H - ch) / 2 : 0;
+
+  // Pan/zoom transform on the content (origin top-left): screen = t + s * local.
   const view = useSharedValue({ s: 1, tx: 0, ty: 0 });
   const gestureStart = useSharedValue({ s: 1, tx: 0, ty: 0 });
   const drag = useSharedValue<DragState | null>(null);
+  const minS = Math.min(1, W / Math.max(cw, 1));
+
+  const clampView = (next: { s: number; tx: number; ty: number }) => {
+    const sc = Math.min(6, Math.max(minS, next.s));
+    const fit = (win: number, size: number, v: number) => (size * sc <= win ? (win - size * sc) / 2 : Math.min(0, Math.max(win - size * sc, v)));
+    return { s: sc, tx: fit(W, cw, next.tx), ty: fit(H, ch, next.ty) };
+  };
+  const apply = (next: { s: number; tx: number; ty: number }) => view.set(clampView(next));
+
+  // Start centred on the park.
+  useEffect(() => {
+    if (!W || staticMap) return;
+    view.set(clampView({ s: 1, tx: (W - cw) / 2, ty: (H - ch) / 2 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [W, H, cw, ch, staticMap]);
 
   const animatedStyle = useAnimatedStyle(() => {
     const v = view.get();
     return { transform: [{ translateX: v.tx }, { translateY: v.ty }, { scale: v.s }] };
   });
 
-  const apply = (next: { s: number; tx: number; ty: number }) => {
-    const sc = Math.min(6, Math.max(1, next.s));
-    const minTx = width - width * sc;
-    const minTy = mapHeight - mapHeight * sc;
-    view.set({
-      s: sc,
-      tx: Math.min(0, Math.max(minTx, next.tx)),
-      ty: Math.min(0, Math.max(minTy, next.ty)),
-    });
-  };
-
-  /** Screen (container) point → site metres. */
+  /** Window point → site metres. */
   const toSite = (x: number, y: number): Vec => {
-    const { s: sc, tx: ox, ty: oy } = view.get();
-    return { x: vb.x + (x - ox) / sc / pxPerM, y: vb.y + (y - oy) / sc / pxPerM };
+    const { s: sc, tx, ty } = view.get();
+    return { x: vb.x + (x - tx) / sc / ppm, y: vb.y + (y - ty) / sc / ppm };
   };
-  const hitRadiusM = (px: number) => px / (view.get().s * pxPerM);
+  const hitRadiusM = (px: number) => px / (view.get().s * ppm);
 
   const visible = Object.values(volunteers).filter((v) => v.status === 'checked_in' && positions[v.id]);
 
@@ -139,10 +307,7 @@ export function SiteMap({
   };
 
   const activeIncidents = incidents.filter((i) => i.status !== 'resolved' && i.status !== 'merged');
-
-  const nearestIncident = (p: Vec, radiusM: number) =>
-    activeIncidents.find((i) => dist(i.location, p) < radiusM)?.id ?? null;
-
+  const nearestIncident = (p: Vec, radiusM: number) => activeIncidents.find((i) => dist(i.location, p) < radiusM)?.id ?? null;
   const selectedZone = festival.zones.find((z) => z.id === selectedZoneId);
 
   const pan = Gesture.Pan()
@@ -205,7 +370,7 @@ export function SiteMap({
     })
     .onUpdate((e) => {
       const g = gestureStart.get();
-      const ns = Math.min(6, Math.max(1, g.s * e.scale));
+      const ns = Math.min(6, Math.max(minS, g.s * e.scale));
       const k = ns / g.s;
       apply({ s: ns, tx: e.focalX - (e.focalX - g.tx) * k, ty: e.focalY - (e.focalY - g.ty) * k });
     })
@@ -215,7 +380,7 @@ export function SiteMap({
     .runOnJS(true)
     .onEnd((e) => {
       const p = toSite(e.x, e.y);
-      const inc = onIncidentPress && nearestIncident(p, hitRadiusM(22));
+      const inc = onIncidentPress && nearestIncident(p, hitRadiusM(26));
       if (inc) return onIncidentPress(inc);
       const id = onDotPress && nearestDot(p, hitRadiusM(20));
       if (id) return onDotPress(id);
@@ -230,148 +395,274 @@ export function SiteMap({
     .numberOfTaps(2)
     .onEnd((e) => {
       const v = view.get();
-      const target = v.s > 1.5 ? 1 : 2.5;
+      const target = v.s > 1.5 ? 1 : 2.2;
       const k = target / v.s;
       apply({ s: target, tx: e.x - (e.x - v.tx) * k, ty: e.y - (e.y - v.ty) * k });
       setZoom(target);
     });
 
   const gesture = Gesture.Simultaneous(pan, pinch, Gesture.Exclusive(doubleTap, tap));
+  const onLayout = (e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width);
 
-  const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
-
-  // Sizes in metres that stay roughly constant on screen as you zoom.
+  // Sizes in pixels, converted to metres, easing off a little as you zoom in.
   const k = 1 / Math.sqrt(zoom);
-  const dotR = (focus ? focus.radius / 40 : 4.2) * k;
-  const fontSize = (focus ? focus.radius / 8 : 11) * k;
+  const dotR = (4.2 / ppm) * k;
+  const fontSize = (15 / ppm) * k;
 
   const pathDispatches = dispatches.filter((d) => pathDispatchIds?.includes(d.id) && d.status !== 'declined');
   const highlight = new Set(highlightIds ?? []);
+  const walking = new Set(Object.entries(movements).filter(([, mv]) => mv.dispatchId).map(([id]) => id));
+
+  // Content-space pixel position of a site point.
+  const px = (p: Vec) => ({ left: (p.x - vb.x) * ppm, top: (p.y - vb.y) * ppm });
 
   const svg = (
-    <Svg width={width} height={mapHeight} viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}>
-      <Rect x={vb.x - 200} y={vb.y - 200} width={vb.w + 400} height={vb.h + 400} fill={scheme === 'dark' ? '#0B0F0C' : '#D4D9CF'} />
-      <Polygon points={pts(festival.boundary)} fill={t.mapGround} stroke={t.mapBoundary} strokeWidth={2} strokeDasharray="8 5" />
-      {festival.walkways.edges.map(([a, b]) => {
-        const A = festival.walkways.nodes[a];
-        const B = festival.walkways.nodes[b];
-        return <Line key={`${a}-${b}`} x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke={t.textSecondary} strokeOpacity={0.12} strokeWidth={6} strokeLinecap="round" />;
-      })}
+    <Svg width={cw} height={ch} viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}>
+      <Scenery dark={dark} ppm={ppm} showLabels={showLabels && !focus} />
       {festival.zones.map((z) => (
-        <ZoneShape key={z.id} zone={z} selected={z.id === selectedZoneId} />
+        <ZoneShape key={z.id} zone={z} selected={z.id === selectedZoneId} dark={dark} />
       ))}
       {festival.obstacles.map((o, i) => (
-        <Polygon key={i} points={pts(o)} fill={scheme === 'dark' ? '#3a3f3b' : '#4A5049'} />
-      ))}
-      {pathDispatches.map((d) => (
-        <Polyline key={d.id} points={pts(d.path)} fill="none" stroke={t.mapPath} strokeWidth={2.5 * k} strokeDasharray={`${6 * k} ${4 * k}`} strokeLinecap="round" />
+        <G key={i}>
+          <Polygon points={pts(o)} fill={m.deck} />
+          <Polygon points={pts(inset(o, 3))} fill={m.deckTop} />
+        </G>
       ))}
       {visible.map((v) => {
+        if (walking.has(v.id)) return null; // drawn as a gliding overlay instead
         const p = positions[v.id];
         const isMe = v.id === currentUserId;
         const isLead = v.role !== 'volunteer';
         const lit = highlight.has(v.id);
         return (
-          <G key={v.id}>
-            {(isMe || lit) && <Circle cx={p.x} cy={p.y} r={dotR * 2.4} fill={isMe ? t.tint : t.mapPath} fillOpacity={0.25} />}
-            <Circle
-              cx={p.x}
-              cy={p.y}
-              r={isLead ? dotR * 1.35 : dotR}
-              fill={dotColor(v)}
-              stroke={isLead || isMe ? '#fff' : scheme === 'dark' ? '#0B0F0C' : '#fff'}
-              strokeWidth={(isLead || isMe ? 1.6 : 0.8) * k}
-            />
-          </G>
+          <Circle
+            key={v.id}
+            cx={p.x}
+            cy={p.y}
+            r={isLead || lit || isMe ? dotR * 1.45 : dotR}
+            fill={lit || isMe ? t.accent : isLead ? (dark ? '#E5E7EB' : '#1E293B') : m.dot}
+            fillOpacity={lit || isMe || isLead ? 1 : 0.82}
+            stroke={m.dotStroke}
+            strokeWidth={((isLead || isMe || lit ? 2 : 1) / ppm) * k}
+          />
         );
       })}
-      {showLabels &&
-        festival.zones.map((z) => <ZoneLabel key={z.id} zone={z} fontSize={fontSize} color={t.text} halo={t.mapGround} />)}
+      {showLabels && festival.zones.map((z) => <ZoneLabel key={z.id} zone={z} fontSize={fontSize} dark={dark} />)}
       {activeIncidents.map((i) => {
-        const c = UrgencyColors[i.urgency];
-        const r = dotR * 2.2;
-        const focused = focusIncidentIds?.includes(i.id);
-        const pending = i.status === 'suggested' || i.status === 'no_suggestion' || i.status === 'logged';
+        const c = urgencyColor(i.urgency, t) === t.textSecondary ? t.accent : urgencyColor(i.urgency, t);
+        const r = dotR * 2.3;
         return (
           <G key={i.id}>
-            {(pending || focused) && <Circle cx={i.location.x} cy={i.location.y} r={r * 2.2} fill={c} fillOpacity={0.18} stroke={c} strokeOpacity={0.6} strokeWidth={1 * k} />}
-            <Polygon
-              points={pts([
-                { x: i.location.x, y: i.location.y - r },
-                { x: i.location.x + r, y: i.location.y },
-                { x: i.location.x, y: i.location.y + r },
-                { x: i.location.x - r, y: i.location.y },
-              ])}
-              fill={c}
-              stroke="#fff"
-              strokeWidth={1.4 * k}
-            />
-            {showLabels && (
-              <SvgText x={i.location.x + r * 1.3} y={i.location.y - r * 0.8} fontSize={fontSize} fontWeight="800" fill={c} fontFamily={LABEL_FONT}>
-                {i.ref}
-              </SvgText>
-            )}
+            <Circle cx={i.location.x} cy={i.location.y} r={r} fill={c} stroke={m.dotStroke} strokeWidth={(2 / ppm) * k} />
+            <SvgText
+              x={i.location.x}
+              y={i.location.y + r * 0.42}
+              fontSize={r * 1.25}
+              fontWeight="900"
+              textAnchor="middle"
+              fill="#FFFFFF"
+              fontFamily={LABEL_FONT}>
+              !
+            </SvgText>
           </G>
         );
       })}
-      {mode === 'zones' && selectedZone &&
+      {mode === 'zones' &&
+        selectedZone &&
         selectedZone.polygon.map((v, i) => (
-          <Rect key={i} x={v.x - 4 * k} y={v.y - 4 * k} width={8 * k} height={8 * k} fill="#fff" stroke={t.tint} strokeWidth={2 * k} />
+          <Rect key={i} x={v.x - 4 * k} y={v.y - 4 * k} width={8 * k} height={8 * k} fill="#fff" stroke={t.accent} strokeWidth={2 * k} />
         ))}
     </Svg>
   );
 
-  return (
-    <View onLayout={onLayout} style={[styles.container, { height: mapHeight || 200, borderColor: t.border }]}>
-      {width > 0 &&
-        (interactive && !focus ? (
-          <GestureDetector gesture={gesture}>
-            <Animated.View style={[styles.inner, animatedStyle]}>{svg}</Animated.View>
-          </GestureDetector>
-        ) : (
-          svg
-        ))}
+  const me = currentUserId && visible.some((v) => v.id === currentUserId) ? positions[currentUserId] : undefined;
+
+  const overlays = (
+    <>
+      {pathDispatches.length > 0 && <MarchingPaths paths={pathDispatches.map((d) => d.path)} vb={vb} w={cw} h={ch} color={t.accent} width={(3.5 / ppm) * k} />}
+      {activeIncidents.map((i) => {
+        const pending = i.status === 'suggested' || i.status === 'no_suggestion' || i.status === 'logged';
+        const focused = focusIncidentIds?.includes(i.id);
+        if (!pending && !focused) return null;
+        const c = urgencyColor(i.urgency, t) === t.textSecondary ? t.accent : urgencyColor(i.urgency, t);
+        const p = px(i.location);
+        const size = Math.max(54, dotR * ppm * 14);
+        return (
+          <View key={i.id} pointerEvents="none" style={[styles.anchor, p]}>
+            <Pulse size={size} color={c} />
+            <Pulse size={size} color={c} delay={900} />
+          </View>
+        );
+      })}
+      {[...walking].map((id) => {
+        const p = positions[id];
+        if (!p || volunteers[id]?.status !== 'checked_in') return null;
+        return <Walker key={id} x={px(p).left} y={px(p).top} size={Math.max(14, dotR * ppm * 3.2)} color={t.accent} ring={m.dotStroke} />;
+      })}
+      {me && !walking.has(currentUserId!) && (
+        <View pointerEvents="none" style={[styles.anchor, px(me)]}>
+          <Pulse size={40} color={t.accent} duration={2200} />
+        </View>
+      )}
+    </>
+  );
+
+  const content = (
+    <View style={{ width: cw, height: ch }}>
+      {svg}
+      {overlays}
     </View>
+  );
+
+  return (
+    <Animated.View entering={FadeIn.duration(450)} onLayout={onLayout} style={[styles.container, { height: H || 200, borderColor: t.border, backgroundColor: m.outside }]}>
+      {W > 0 &&
+        (staticMap ? (
+          <View style={{ position: 'absolute', left: ox, top: oy }}>{content}</View>
+        ) : (
+          <GestureDetector gesture={gesture}>
+            <View style={StyleSheet.absoluteFill}>
+              <Animated.View style={[styles.inner, animatedStyle]}>{content}</Animated.View>
+            </View>
+          </GestureDetector>
+        ))}
+    </Animated.View>
   );
 }
 
-function ZoneShape({ zone, selected }: { zone: Zone; selected: boolean }) {
-  const c = ZoneColors[zone.kind];
+/* ------------------------------- moving bits ------------------------------ */
+
+/** A ring that grows and fades, forever. Two offset ones read as a heartbeat. */
+function Pulse({ size, color, delay = 0, duration = 1800 }: { size: number; color: string; delay?: number; duration?: number }) {
+  const p = useSharedValue(0);
+  useEffect(() => {
+    p.set(withDelay(delay, withRepeat(withTiming(1, { duration, easing: Easing.out(Easing.cubic) }), -1, false)));
+  }, [p, delay, duration]);
+  const style = useAnimatedStyle(() => ({
+    opacity: 0.55 * (1 - p.get()),
+    transform: [{ scale: 0.25 + p.get() * 1.1 }],
+  }));
   return (
-    <Polygon
-      points={pts(zone.polygon)}
-      fill={c}
-      fillOpacity={selected ? 0.35 : 0.16}
-      stroke={c}
-      strokeOpacity={selected ? 1 : 0.55}
-      strokeWidth={selected ? 2.5 : 1.2}
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        { position: 'absolute', left: -size / 2, top: -size / 2, width: size, height: size, borderRadius: size / 2, borderWidth: 2, borderColor: color, backgroundColor: `${color}33` },
+        style,
+      ]}
     />
   );
 }
 
-/** Zone name along the top edge, drawn above the dots with a halo for legibility. */
-function ZoneLabel({ zone, fontSize, color, halo }: { zone: Zone; fontSize: number; color: string; halo: string }) {
+/** A responder walking to the scene: glides between position updates, with a pulse. */
+function Walker({ x, y, size, color, ring }: { x: number; y: number; size: number; color: string; ring: string }) {
+  const sx = useSharedValue(x);
+  const sy = useSharedValue(y);
+  useEffect(() => {
+    sx.set(withTiming(x, { duration: 130, easing: Easing.linear }));
+    sy.set(withTiming(y, { duration: 130, easing: Easing.linear }));
+  }, [x, y, sx, sy]);
+  const style = useAnimatedStyle(() => ({ transform: [{ translateX: sx.get() }, { translateY: sy.get() }] }));
+  return (
+    <Animated.View pointerEvents="none" style={[styles.anchor, { left: 0, top: 0 }, style]}>
+      <Pulse size={size * 3} color={color} duration={1400} />
+      <View
+        style={{
+          position: 'absolute',
+          left: -size / 2,
+          top: -size / 2,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: color,
+          borderWidth: 2.5,
+          borderColor: ring,
+          shadowColor: '#000',
+          shadowOpacity: 0.3,
+          shadowRadius: 6,
+          shadowOffset: { width: 0, height: 2 },
+          elevation: 4,
+        }}
+      />
+    </Animated.View>
+  );
+}
+
+/** Route lines with dashes that march toward the incident. */
+function MarchingPaths({ paths, vb, w, h, color, width }: { paths: Vec[][]; vb: { x: number; y: number; w: number; h: number }; w: number; h: number; color: string; width: number }) {
+  const [offset, setOffset] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    let last = Date.now();
+    const loop = () => {
+      const now = Date.now();
+      setOffset((o) => (o - (now - last) * 0.02) % 1000);
+      last = now;
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return (
+    <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width={w} height={h} viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}>
+      {paths.map((p, i) => (
+        <G key={i}>
+          <Polyline points={pts(p)} fill="none" stroke={color} strokeOpacity={0.22} strokeWidth={width * 2.6} strokeLinecap="round" strokeLinejoin="round" />
+          <Polyline
+            points={pts(p)}
+            fill="none"
+            stroke={color}
+            strokeWidth={width}
+            strokeDasharray={`${width * 2.2} ${width * 1.6}`}
+            strokeDashoffset={offset * width}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </G>
+      ))}
+    </Svg>
+  );
+}
+
+/* --------------------------------- zones --------------------------------- */
+
+function ZoneShape({ zone, selected, dark }: { zone: Zone; selected: boolean; dark: boolean }) {
+  const [fill, stroke] = ZONE_TINT[zone.kind][dark ? 'dark' : 'light'];
+  return <Polygon points={pts(zone.polygon)} fill={fill} fillOpacity={0.92} stroke={stroke} strokeWidth={selected ? 3 : 1.4} strokeOpacity={selected ? 1 : 0.8} />;
+}
+
+/** Zone name inside the top of the zone, with a halo so it reads over anything. */
+function ZoneLabel({ zone, fontSize, dark }: { zone: Zone; fontSize: number; dark: boolean }) {
+  const m = dark ? MAP.dark : MAP.light;
+  const [, stroke] = ZONE_TINT[zone.kind][dark ? 'dark' : 'light'];
   const ctr = centroid(zone.polygon);
   const top = Math.min(...zone.polygon.map((p) => p.y));
-  const y = top + fontSize * 1.05;
+  const y = top + fontSize * 1.1;
   const common = { x: ctr.x, y, fontSize, fontWeight: '700' as const, textAnchor: 'middle' as const, fontFamily: LABEL_FONT };
   return (
     <G>
-      <SvgText {...common} stroke={halo} strokeWidth={fontSize / 3} strokeLinejoin="round" fill={halo}>
-        {zone.name}
+      <SvgText {...common} stroke={m.halo} strokeWidth={fontSize / 3.2} strokeLinejoin="round" fill={m.halo}>
+        {mapName(zone)}
       </SvgText>
-      <SvgText {...common} fill={ZoneColors[zone.kind]}>
-        {zone.name}
+      <SvgText {...common} fill={dark ? m.label : stroke}>
+        {mapName(zone)}
       </SvgText>
     </G>
   );
 }
 
-function pts(poly: Vec[]): string {
-  return poly.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+/** Shrink a rectangle-ish polygon toward its centre (roof highlight on stage decks). */
+function inset(poly: Vec[], by: number): Vec[] {
+  const c = centroid(poly);
+  return poly.map((p) => {
+    const dx = p.x - c.x;
+    const dy = p.y - c.y;
+    const d = Math.hypot(dx, dy) || 1;
+    return { x: p.x - (dx / d) * by, y: p.y - (dy / d) * by };
+  });
 }
 
 const styles = StyleSheet.create({
-  container: { width: '100%', overflow: 'hidden', borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
+  container: { width: '100%', overflow: 'hidden', borderRadius: 22, borderWidth: StyleSheet.hairlineWidth },
   inner: { transformOrigin: 'left top' },
+  anchor: { position: 'absolute', width: 0, height: 0 },
 });
