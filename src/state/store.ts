@@ -14,6 +14,7 @@ import { isAvailableNow, pickCandidates, WALK_SPEED_MPS } from '@/domain/matchin
 import { findPath, pointAlong, routeDistance } from '@/domain/pathfinding';
 import { gapsAt } from '@/domain/coverage';
 import type { PlacementMove } from '@/domain/placement';
+import { skillName, withTargets, type StaffMove, type TargetChange } from '@/domain/staffing';
 import {
   INCIDENT_TYPE_LABELS,
   ROLE_LABELS,
@@ -33,6 +34,7 @@ import {
   type Vec,
   type Volunteer,
   type Zone,
+  type ZoneRequirement,
 } from '@/domain/types';
 import { SCENARIOS, type ScenarioId } from '@/sim/scenarios';
 import { FESTIVAL_ID, seedFestival } from '@/sim/seed/festival';
@@ -106,6 +108,22 @@ export interface State {
   scriptedTranscript: string | null;
   /** A notice to flash as an in-app banner. */
   banner: Notice | null;
+  /** Surges and spoken staffing changes Mo has started and not yet ended. */
+  surges: ActiveSurge[];
+}
+
+/** A staffing change that can be undone in one tap ("End surge"). */
+export interface ActiveSurge {
+  id: string;
+  title: string;
+  note: string;
+  source: 'preset' | 'ai';
+  startedAt: number;
+  startedBy: string;
+  /** Each changed zone's rules before the surge, to put back afterwards. */
+  before: Record<string, ZoneRequirement[]>;
+  /** Who moved, and where from, so they can be sent back. */
+  moves: { volunteerId: string; fromZoneId?: string; toZoneId: string }[];
 }
 
 export function simNow(clock: Clock = useStore.getState().clock): number {
@@ -152,6 +170,7 @@ function initialState(scenarioId: ScenarioId): Omit<State, 'onboarded' | 'appear
     reportDraft: null,
     scriptedTranscript: null,
     banner: null,
+    surges: [],
   };
 }
 
@@ -487,6 +506,110 @@ export function applyPlacement(moves: PlacementMove[], source: 'ai' | 'rules' | 
   }
   audit(`Applied placement plan (${moves.length} moves, ${source})`);
   // Gaps may now be closed; allow future alerts for zones that regress.
+  set({ coverageAlerted: {} });
+}
+
+/* --------------------------------- staffing --------------------------------- */
+
+/** A random spot inside a zone, a little in from its edges. */
+function spotIn(zone: Zone): Vec {
+  const xs = zone.polygon.map((p) => p.x);
+  const ys = zone.polygon.map((p) => p.y);
+  return {
+    x: Math.min(...xs) + 6 + Math.random() * (Math.max(...xs) - Math.min(...xs) - 12),
+    y: Math.min(...ys) + 6 + Math.random() * (Math.max(...ys) - Math.min(...ys) - 12),
+  };
+}
+
+/** Move people (already approved), tell each of them, and walk them over. */
+function moveStaff(moves: { volunteerId: string; toZoneId: string; distanceM?: number }[], note: string) {
+  const now = simNow();
+  for (const m of moves) {
+    const v = get().volunteers[m.volunteerId];
+    const zone = zoneById(m.toZoneId);
+    if (!v || !zone) continue;
+    set({ volunteers: { ...get().volunteers, [v.id]: { ...v, zoneId: zone.id, movedAt: now } } });
+    if (v.status === 'checked_in') startMovement(v.id, spotIn(zone));
+    else set({ positions: { ...get().positions, [v.id]: spotIn(zone) } });
+    notify(
+      { to: v.id, kind: 'moved', title: `Please move to ${zone.name}`, body: note },
+      { phone: { title: `Move to ${zone.name}${m.distanceM ? ` · ${m.distanceM} m` : ''}`, body: note.length > 60 ? `${note.slice(0, 59)}…` : note } },
+    );
+  }
+}
+
+/**
+ * Apply an approved staffing change: new minimums for some zones and the
+ * people moving to meet them. Surges and spoken requests are remembered so
+ * they can be ended in one tap.
+ */
+export function applyStaffing(args: {
+  title: string;
+  note: string;
+  source: 'preset' | 'ai' | 'manual';
+  changes: TargetChange[];
+  moves: StaffMove[];
+}) {
+  const s = get();
+  const before: Record<string, ZoneRequirement[]> = {};
+  for (const c of args.changes) {
+    const z = zoneById(c.zoneId);
+    if (z && !before[z.id]) before[z.id] = z.requirements;
+  }
+  if (args.changes.length) set({ festival: withTargets(s.festival, args.changes) });
+  moveStaff(args.moves, args.note);
+
+  const what = args.changes.map((c) => `${zoneById(c.zoneId)?.name} ${skillName(c.skill).toLowerCase()} → ${c.min}`).join('; ');
+  audit(`${args.title}${what ? `: ${what}` : ''}${args.moves.length ? `. Moved ${args.moves.length} ${args.moves.length === 1 ? 'person' : 'people'}` : ''}`);
+
+  if (args.source !== 'manual') {
+    const surge: ActiveSurge = {
+      id: uid('surge'),
+      title: args.title,
+      note: args.note,
+      source: args.source,
+      startedAt: simNow(),
+      startedBy: s.currentUserId ?? 'system',
+      before,
+      moves: args.moves.map((m) => ({ volunteerId: m.volunteerId, fromZoneId: m.fromZoneId, toZoneId: m.toZoneId })),
+    };
+    set({ surges: [surge, ...get().surges] });
+  }
+  // Targets changed, so gaps may have opened or closed: let alerts fire afresh.
+  set({ coverageAlerted: {} });
+}
+
+/** End a surge: put the old minimums back and, if asked, send people back where they were. */
+export function endSurge(id: string, sendBack: boolean) {
+  const surge = get().surges.find((x) => x.id === id);
+  if (!surge) return;
+  const festival = get().festival;
+  set({
+    festival: { ...festival, zones: festival.zones.map((z) => (surge.before[z.id] ? { ...z, requirements: surge.before[z.id] } : z)) },
+    surges: get().surges.filter((x) => x.id !== id),
+  });
+  let sent = 0;
+  if (sendBack) {
+    const busy = busyVolunteerIds();
+    const back = surge.moves.filter((m) => {
+      const v = get().volunteers[m.volunteerId];
+      return m.fromZoneId && v && v.zoneId === m.toZoneId && v.status === 'checked_in' && !busy.has(v.id);
+    });
+    // Coming back isn't a new move, so it doesn't count against the cooldown.
+    for (const m of back) {
+      const zone = zoneById(m.fromZoneId!);
+      const v = get().volunteers[m.volunteerId];
+      if (!zone || !v) continue;
+      set({ volunteers: { ...get().volunteers, [v.id]: { ...v, zoneId: zone.id } } });
+      startMovement(v.id, spotIn(zone));
+      notify(
+        { to: v.id, kind: 'moved', title: `You can head back to ${zone.name}`, body: `${surge.title} is over. Thanks for your help.` },
+        { phone: { title: `Back to ${zone.name}`, body: 'The surge is over. Thanks!' } },
+      );
+      sent += 1;
+    }
+  }
+  audit(`Ended "${surge.title}"${sent ? `; sent ${sent} back` : ''}`);
   set({ coverageAlerted: {} });
 }
 
