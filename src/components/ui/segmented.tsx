@@ -12,8 +12,8 @@ export function Segmented({ value, options, onChange }: { value: string; options
       {options.map(([v, label]) => {
         const on = v === value;
         return (
-          <Pressable key={v} onPress={() => onChange(v)} style={[styles.segItem, on && { backgroundColor: t.backgroundElement }]}>
-            <Txt variant="body" style={{ fontSize: 14, fontWeight: on ? '800' : '500' }} color={on ? t.text : t.textSecondary}>
+          <Pressable key={v} onPress={() => onChange(v)} style={[styles.segItem, on && { backgroundColor: t.accent }]}>
+            <Txt variant="label" style={{ fontWeight: on ? '700' : '500' }} color={on ? '#FFFFFF' : t.textSecondary}>
               {label}
             </Txt>
           </Pressable>
@@ -24,6 +24,6 @@ export function Segmented({ value, options, onChange }: { value: string; options
 }
 
 const styles = StyleSheet.create({
-  segment: { flexDirection: 'row', borderRadius: Radius.md, padding: 3 },
-  segItem: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: Radius.sm },
+  segment: { flexDirection: 'row', borderRadius: Radius.pill, padding: 4 },
+  segItem: { flex: 1, alignItems: 'center', justifyContent: 'center', height: 48, borderRadius: Radius.pill },
 });
