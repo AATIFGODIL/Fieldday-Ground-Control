@@ -15,7 +15,9 @@ import { findPath, pointAlong, routeDistance } from '@/domain/pathfinding';
 import { gapsAt } from '@/domain/coverage';
 import type { PlacementMove } from '@/domain/placement';
 import {
+  INCIDENT_TYPE_LABELS,
   ROLE_LABELS,
+  SKILL_LABELS,
   type AuditEntry,
   type Brief,
   type Dispatch,
@@ -232,14 +234,47 @@ function audit(action: string, opts: { actorId?: string; incidentId?: string; de
   set({ audit: [entry, ...get().audit] });
 }
 
-export function notify(n: Omit<Notice, 'id' | 'at' | 'read'>, opts: { device?: boolean } = {}) {
+type PhoneCopy = { title: string; body: string };
+
+const clip = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`);
+const firstName = (name?: string) => name?.split(' ')[0] ?? 'Someone';
+const URGENCY_WORD: Record<Urgency, string> = { critical: 'Critical', high: 'Urgent', medium: 'Heads-up', low: 'Minor' };
+
+/**
+ * What the phone's own notification says. Lock-screen sized: a few words in
+ * the title, one short line under it. The full detail is in the app.
+ */
+function phoneCopy(n: Omit<Notice, 'id' | 'at' | 'read'>): PhoneCopy {
+  const s = get();
+  const inc = n.incidentId ? s.incidents.find((i) => i.id === n.incidentId) : undefined;
+  if (inc) {
+    const zone = zoneById(inc.zoneId)?.name ?? 'the site';
+    const what = INCIDENT_TYPE_LABELS[inc.type];
+    switch (n.kind) {
+      case 'dispatch': {
+        const d = s.dispatches.find((x) => x.id === n.dispatchId);
+        return { title: `Go to ${zone}${d ? ` · ${d.distanceM} m` : ''}`, body: `${what}. Tap for your brief.` };
+      }
+      case 'incident':
+        return { title: `${URGENCY_WORD[inc.urgency]}: ${what}`, body: `${zone} · from ${firstName(s.volunteers[inc.reporterId]?.name)}` };
+      case 'related':
+        return { title: 'Possible duplicate', body: `Two reports at ${zone}` };
+      case 'no_suggestion':
+        return { title: 'Choose who to send', body: `${what} · ${zone}` };
+    }
+  }
+  return { title: clip(n.title, 36), body: clip(n.body, 60) };
+}
+
+export function notify(n: Omit<Notice, 'id' | 'at' | 'read'>, opts: { device?: boolean; phone?: PhoneCopy } = {}) {
   const notice: Notice = { ...n, id: uid('n'), at: simNow(), read: false };
   const s = get();
   set({ notices: [notice, ...s.notices] });
   if (n.to === s.currentUserId) set({ banner: notice });
   // The device belongs to whoever is signed in; dispatches always buzz (it's "their phone").
   if (n.to === s.currentUserId || opts.device) {
-    notifyDevice(notice.title, notice.body, { noticeId: notice.id, dispatchId: n.dispatchId, incidentId: n.incidentId });
+    const short = opts.phone ?? phoneCopy(n);
+    notifyDevice(short.title, short.body, { noticeId: notice.id, dispatchId: n.dispatchId, incidentId: n.incidentId });
   }
 }
 
@@ -363,12 +398,15 @@ export function checkCoverageNow() {
     const key = `${g.zoneId}|${g.skill}`;
     if (alerted[key]) continue;
     alerted[key] = true;
-    notify({
-      to: safetyLeadId(),
-      kind: 'coverage',
-      title: `Coverage gap: ${g.zoneName}`,
-      body: `${g.label}. Open Placement to reassign.`,
-    });
+    notify(
+      {
+        to: safetyLeadId(),
+        kind: 'coverage',
+        title: `Coverage gap: ${g.zoneName}`,
+        body: `${g.label}.`,
+      },
+      { phone: { title: `${g.zoneName} is short`, body: `${g.have} of ${g.required} ${g.skill ? SKILL_LABELS[g.skill].toLowerCase() : 'volunteers'}` } },
+    );
   }
   set({ coverageAlerted: alerted });
 }
@@ -670,17 +708,28 @@ export function approve(incidentId: string, plan: ResponsePlan): { error: string
   }
 
   if (check.escalated) {
-    notify({
-      to: safetyLeadId(),
-      kind: 'escalated_approval',
-      title: `${user.name} approved ${inc.ref}`,
-      body: `${ROLE_LABELS[user.role]} approved after the ${inc.urgency === 'critical' ? '30-second' : '2-minute'} window with no safety-lead response.`,
-      incidentId,
-    });
+    notify(
+      {
+        to: safetyLeadId(),
+        kind: 'escalated_approval',
+        title: `${user.name} approved ${inc.ref}`,
+        body: `${ROLE_LABELS[user.role]} approved after the ${inc.urgency === 'critical' ? '30-second' : '2-minute'} window with no safety-lead response.`,
+        incidentId,
+      },
+      {
+        phone: {
+          title: `${firstName(user.name)} sent help`,
+          body: `${INCIDENT_TYPE_LABELS[inc.type]} · you didn’t answer in ${inc.urgency === 'critical' ? '30 s' : '2 min'}`,
+        },
+      },
+    );
   } else {
     const lead = zoneLeadId(inc.zoneId);
     if (lead) {
-      notify({ to: lead, kind: 'info', title: `${inc.ref} response approved`, body: `Approved by ${user.name}.`, incidentId });
+      notify(
+        { to: lead, kind: 'info', title: `${inc.ref} response approved`, body: `Approved by ${user.name}.`, incidentId },
+        { phone: { title: 'Help is on the way', body: `${INCIDENT_TYPE_LABELS[inc.type]} · ${zone?.name ?? 'your zone'}` } },
+      );
     }
   }
   return { dispatches };
@@ -706,16 +755,22 @@ export function setDispatchStatus(dispatchId: string, status: DispatchStatus, ac
   if (status === 'declined') {
     const { [d.volunteerId]: _, ...movements } = get().movements;
     set({ movements });
-    notify({
-      to: inc?.approval?.byId ?? safetyLeadId(),
-      kind: 'info',
-      title: `${v?.name} can't attend ${inc?.ref}`,
-      body: 'Choose another responder from the incident screen.',
-      incidentId: d.incidentId,
-    });
+    notify(
+      {
+        to: inc?.approval?.byId ?? safetyLeadId(),
+        kind: 'info',
+        title: `${v?.name} can't attend ${inc?.ref}`,
+        body: 'Choose another responder from the incident screen.',
+        incidentId: d.incidentId,
+      },
+      { phone: { title: `${firstName(v?.name)} can’t go`, body: 'Pick someone else.' } },
+    );
   }
   if (status === 'on_scene' && inc) {
-    notify({ to: safetyLeadId(), kind: 'info', title: `${v?.name} on scene`, body: `${inc.ref} at ${zoneById(inc.zoneId)?.name}`, incidentId: inc.id });
+    notify(
+      { to: safetyLeadId(), kind: 'info', title: `${v?.name} on scene`, body: `${inc.ref} at ${zoneById(inc.zoneId)?.name}`, incidentId: inc.id },
+      { phone: { title: `${firstName(v?.name)} is there`, body: `${INCIDENT_TYPE_LABELS[inc.type]} · ${zoneById(inc.zoneId)?.name}` } },
+    );
   }
 }
 
@@ -802,14 +857,17 @@ export function tick(dtRealMs: number) {
             title: "You've left the festival grounds",
             body: "You're still checked in. Head back or check out so we know you're off shift.",
           },
-          { device: v.id === after.currentUserId },
+          { device: v.id === after.currentUserId, phone: { title: 'You’ve left the festival', body: 'Head back, or check out.' } },
         );
-        notify({
-          to: safetyLeadId(),
-          kind: 'offsite',
-          title: `${v.name} is off-site while checked in`,
-          body: `Left the ${exit} side over a minute ago and hasn't checked out. Last zone: ${zoneById(v.zoneId)?.name ?? 'unknown'}.`,
-        });
+        notify(
+          {
+            to: safetyLeadId(),
+            kind: 'offsite',
+            title: `${v.name} is off-site while checked in`,
+            body: `Left the ${exit} side over a minute ago and hasn't checked out. Last zone: ${zoneById(v.zoneId)?.name ?? 'unknown'}.`,
+          },
+          { phone: { title: `${firstName(v.name)} left the site`, body: 'Still checked in.' } },
+        );
         audit('Off-site for over a minute while checked in — alerted safety lead', { actorId: v.id });
       }
     } else if (offsiteSince[v.id] !== undefined) {
@@ -828,13 +886,16 @@ export function tick(dtRealMs: number) {
       set({ escalationNotified: { ...get().escalationNotified, [inc.id]: true } });
       const lead = zoneLeadId(inc.zoneId);
       if (lead) {
-        notify({
-          to: lead,
-          kind: 'incident',
-          title: `You can now approve ${inc.ref}`,
-          body: `No safety-lead response after ${inc.urgency === 'critical' ? '30 seconds' : '2 minutes'}.`,
-          incidentId: inc.id,
-        });
+        notify(
+          {
+            to: lead,
+            kind: 'incident',
+            title: `You can now approve ${inc.ref}`,
+            body: `No safety-lead response after ${inc.urgency === 'critical' ? '30 seconds' : '2 minutes'}.`,
+            incidentId: inc.id,
+          },
+          { phone: { title: 'You can approve now', body: `${INCIDENT_TYPE_LABELS[inc.type]} · safety lead hasn’t answered` } },
+        );
       }
       audit(`Safety-lead window lapsed — ${after.volunteers[lead ?? '']?.name ?? 'location lead'} may now approve`, {
         actorId: 'system',
