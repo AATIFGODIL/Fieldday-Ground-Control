@@ -2,15 +2,17 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { View } from 'react-native';
 
 import { IncidentRow } from '@/components/incident/parts';
-import { InboxButton } from '@/components/inbox-button';
 import { ShiftCard } from '@/components/shift-card';
-import { Banner, Button, Card, Pill, Row, Screen, Section, Txt, UrgencyPill } from '@/components/ui/primitives';
+import { Glyph } from '@/components/ui/glyph';
+import { Breathe, PulseRings } from '@/components/ui/motion';
+import { Appear, Banner, Button, Card, Header, Row, Screen, Section, Tappable, Txt } from '@/components/ui/primitives';
 import { Spacing } from '@/constants/theme';
 import { INCIDENT_TYPE_LABELS } from '@/domain/types';
 import { useSimNow } from '@/hooks/use-sim-now';
 import { useTheme } from '@/hooks/use-theme';
 import { useStore, zoneById } from '@/state/store';
 
+/** A volunteer's home: am I needed, how do I report, am I on shift. */
 export default function VolunteerHome() {
   const t = useTheme();
   const { reported } = useLocalSearchParams<{ reported?: string }>();
@@ -25,51 +27,71 @@ export default function VolunteerHome() {
   const mine = incidents.filter((i) => i.reporterId === me.id);
 
   return (
-    <Screen>
-      <View style={{ gap: 2, paddingRight: 160 }}>
-        <Txt variant="label" color={t.tint}>VOLUNTEER · {zoneById(me.zoneId)?.name?.toUpperCase()}</Txt>
-        <Txt variant="title">Hi {me.name.split(' ')[0]}</Txt>
-      </View>
+    <Screen tabs>
+      <Header eyebrow={`Volunteer · ${zoneById(me.zoneId)?.name ?? 'Unassigned'}`} title={`Hi ${me.name.split(' ')[0]}`} />
 
       {reported && mine.some((i) => i.ref === reported) && (
-        <Banner tone="ok" title={`${reported} logged`} body="The safety lead and your location lead have been notified." />
+        <Banner tone="ok" title="Report sent" body="Mo, the safety lead, has it. You’ll see here when help is on the way." />
       )}
 
       {active.map((d) => {
         const inc = incidents.find((i) => i.id === d.incidentId);
         if (!inc) return null;
         return (
-          <Card key={d.id} onPress={() => router.push({ pathname: '/dispatch/[id]', params: { id: d.id } })} style={{ borderWidth: 2, borderColor: '#E5484D' }}>
-            <Row style={{ justifyContent: 'space-between' }}>
-              <Txt variant="label" color="#E5484D">YOU’RE NEEDED</Txt>
-              <UrgencyPill urgency={inc.urgency} />
-            </Row>
-            <Txt variant="heading">{INCIDENT_TYPE_LABELS[inc.type]} · {zoneById(inc.zoneId)?.name}</Txt>
-            <Txt variant="caption">{d.message}</Txt>
-            <Pill label={d.status === 'acknowledged' ? 'ON THE WAY' : 'TAP TO OPEN BRIEF'} color="#E5484D" />
+          <Appear key={d.id}>
+          <Card
+            style={{ backgroundColor: inc.urgency === 'critical' ? t.critical : t.accent, borderColor: 'transparent', overflow: 'hidden' }}
+            onPress={() => router.push({ pathname: '/dispatch/[id]', params: { id: d.id } })}>
+            <View style={{ position: 'absolute', right: -40, top: -40, width: 160, height: 160 }}>
+              <PulseRings size={160} color="#FFFFFF" count={2} />
+            </View>
+            <Txt variant="label" color="#FFFFFF">
+              You’re needed
+            </Txt>
+            <Txt variant="title" color="#FFFFFF">
+              {zoneById(inc.zoneId)?.name}
+            </Txt>
+            <Txt variant="body" color="#FFFFFF">
+              {INCIDENT_TYPE_LABELS[inc.type]}. {d.status === 'acknowledged' ? 'You’re on your way.' : 'Tap to see where to go.'}
+            </Txt>
           </Card>
+          </Appear>
         );
       })}
 
+      <Tappable onPress={() => router.push('/volunteer/report')} accessibilityLabel="Report something">
+        <View style={{ alignItems: 'center', gap: Spacing.three, paddingVertical: Spacing.four, borderRadius: 28, backgroundColor: t.backgroundElement }}>
+          <Breathe>
+            <View style={{ width: 112, height: 112, borderRadius: 56, backgroundColor: t.accent, alignItems: 'center', justifyContent: 'center' }}>
+              <Glyph name="mic" size={48} color="#FFFFFF" />
+            </View>
+          </Breathe>
+          <View style={{ alignItems: 'center', gap: Spacing.one, paddingHorizontal: Spacing.four }}>
+            <Txt variant="heading" center>
+              Report something
+            </Txt>
+            <Txt variant="caption" center>
+              Just say what you see. We’ll write it up for you.
+            </Txt>
+          </View>
+        </View>
+      </Tappable>
+
       <ShiftCard volunteerId={me.id} />
 
-      <Button title="Report an incident" size="lg" variant="danger" onPress={() => router.push('/volunteer/report')} />
+      {mine.length > 0 && (
+        <Section title="Your reports">
+          {mine.map((i, n) => (
+            <Appear key={i.id} index={n}>
+              <IncidentRow incident={i} now={now} links={links} />
+            </Appear>
+          ))}
+        </Section>
+      )}
 
-      <Row style={{ justifyContent: 'space-between' }}>
-        <InboxButton />
+      <Row style={{ justifyContent: 'center' }}>
+        <Button title="Change my availability" variant="ghost" onPress={() => router.push('/tools/shift')} />
       </Row>
-
-      <Section title="Your reports">
-        {mine.length === 0 ? (
-          <Txt variant="caption">Nothing reported yet.</Txt>
-        ) : (
-          <View style={{ gap: Spacing.two }}>
-            {mine.map((i) => (
-              <IncidentRow key={i.id} incident={i} now={now} links={links} />
-            ))}
-          </View>
-        )}
-      </Section>
     </Screen>
   );
 }
