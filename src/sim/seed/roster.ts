@@ -49,7 +49,7 @@ type Named = Omit<Volunteer, 'availability' | 'status' | 'languages'> & {
  * same fight ~130 m apart; Marcus and Zoe are nearby security.
  */
 export const NAMED: Named[] = [
-  { id: 'v-kim', name: 'Kim Nguyen', role: 'safety_lead', skills: ['first_aid', 'crowd_control', 'security_licence'], pos: { x: 262, y: 300 } },
+  { id: 'v-kim', name: 'Mo Rahman', role: 'safety_lead', skills: ['first_aid', 'crowd_control', 'security_licence'], pos: { x: 262, y: 300 } },
   { id: 'v-raj', name: 'Raj Patel', role: 'location_lead', leadsZoneId: 'z-lawn', zoneId: 'z-lawn', skills: ['crowd_control', 'first_aid'], pos: { x: 140, y: 140 }, languages: ['English', 'Hindi'] },
   { id: 'v-grace', name: 'Grace Okafor', role: 'location_lead', leadsZoneId: 'z-water', zoneId: 'z-water', skills: ['first_aid'], pos: { x: 318, y: 240 } },
   { id: 'v-priya', name: 'Priya Shah', role: 'volunteer', zoneId: 'z-water', skills: ['wwcc'], pos: { x: 290, y: 232 }, languages: ['English', 'Gujarati'] },
