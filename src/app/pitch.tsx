@@ -2,8 +2,8 @@
  * The pitch: problem, evidence, solution, live demo, close.
  *
  * Ground Control's own look: Apple's system type, muted solid colour slides
- * (sand, dark plum, dark blue) between off-white and near-black ones, 3D
- * extruded titles, a radio transcript that types itself and cuts out, and a
+ * (ember, dark plum, dark blue) between off-white and near-black ones, 3D
+ * extruded titles, cards that each enter their own way, a radio transcript that types itself and cuts out, and a
  * tilted 3D festival map with a responder walking to an incident.
  *
  * Motion: lines tilt up into place in 3D, rise and unblur, one after another;
@@ -21,6 +21,7 @@ import Animated, {
   interpolateColor,
   useAnimatedStyle,
   useSharedValue,
+  type SharedValue,
   withDelay,
   withRepeat,
   withSequence,
@@ -31,7 +32,7 @@ import { Glyph } from '@/components/ui/glyph';
 
 /* ----------------------------- look and type ----------------------------- */
 
-type Theme = 'light' | 'dark' | 'sand' | 'plum' | 'midnight';
+type Theme = 'light' | 'dark' | 'ember' | 'plum' | 'midnight';
 
 interface Colors {
   bg: string;
@@ -49,7 +50,7 @@ interface Colors {
 const PALETTE: Record<Theme, Colors> = {
   light: { bg: '#FBFAF7', ink: '#1D1D1F', grey: '#8A8780', muted: '#6B6862', accent: '#3E4C8A', fill: '#F1EFEA', depth: '#DCDDE6', offscript: '#A4502A' },
   dark: { bg: '#0B0B0C', ink: '#F2F1EE', grey: '#8E8C87', muted: '#A9A7A1', accent: '#9AA6D6', fill: '#1B1B1D', depth: '#2E3A66', offscript: '#E0A458' },
-  sand: { bg: '#D8C7A6', ink: '#1F1C17', grey: '#5E5240', muted: '#3F3729', accent: '#1F1C17', fill: 'rgba(31,28,23,0.08)', depth: '#B8A27C', offscript: '#1F1C17' },
+  ember: { bg: '#1C120D', ink: '#F2E9E1', grey: '#A8958A', muted: '#D6C6BA', accent: '#E0A458', fill: 'rgba(242,233,225,0.08)', depth: '#5A3418', offscript: '#E0A458' },
   plum: { bg: '#0E0816', ink: '#F4F1EA', grey: '#BDB2D2', muted: '#DED7E9', accent: '#C9B6F2', fill: 'rgba(244,241,234,0.1)', depth: '#2A1B3F', offscript: '#E3C27A' },
   midnight: { bg: '#0A1328', ink: '#F4F1EA', grey: '#B3BDD6', muted: '#DAE0EC', accent: '#F4F1EA', fill: 'rgba(244,241,234,0.1)', depth: '#030812', offscript: '#E3C27A' },
 };
@@ -106,10 +107,11 @@ const EASE = Easing.bezier(0.2, 0.8, 0.2, 1);
 
 /**
  * One line of a slide. `rise` tilts up from below in 3D while rising and
- * unblurring; `flip` swings in around its vertical axis (for cards).
- * `order` staggers the lines 0.14 s apart.
+ * unblurring; `flip` swings in around its vertical axis and `drop` falls
+ * forward off a hinge along its top edge, like a departures-board flap (both
+ * for cards). `order` staggers the lines 0.14 s apart.
  */
-function Rise({ order, children, center, kind = 'rise' }: { order: number; children: ReactNode; center?: boolean; kind?: 'rise' | 'flip' }) {
+function Rise({ order, children, center, kind = 'rise' }: { order: number; children: ReactNode; center?: boolean; kind?: 'rise' | 'flip' | 'drop' }) {
   const v = useSharedValue(0);
   useEffect(() => {
     v.set(withDelay(150 + order * 140, withTiming(1, { duration: 900, easing: EASE })));
@@ -121,12 +123,15 @@ function Rise({ order, children, center, kind = 'rise' }: { order: number; child
       transform:
         kind === 'flip'
           ? [{ perspective: 1400 }, { rotateY: `${p * -75}deg` }, { translateX: p * -30 }]
-          : [{ perspective: 1200 }, { translateY: p * 40 }, { rotateX: `${p * 32}deg` }],
+          : kind === 'drop'
+            ? [{ perspective: 1200 }, { translateY: p * -24 }, { rotateX: `${p * -80}deg` }]
+            : [{ perspective: 1200 }, { translateY: p * 40 }, { rotateX: `${p * 32}deg` }],
       ...(WEB ? { filter: `blur(${p * 10}px)` } : {}),
     };
   });
   return (
-    <Animated.View style={[{ alignSelf: center ? 'center' : 'stretch', alignItems: center ? 'center' : 'flex-start', transformOrigin: 'center bottom' }, style]}>
+    <Animated.View
+      style={[{ alignSelf: center ? 'center' : 'stretch', alignItems: center ? 'center' : 'flex-start', transformOrigin: kind === 'drop' ? 'center top' : 'center bottom' }, style]}>
       {children}
     </Animated.View>
   );
@@ -186,12 +191,13 @@ function Source({ s, children }: { s: Sizes; children: ReactNode }) {
 
 /**
  * Chunky 3D letters: the same words stacked a pixel apart in a darker shade
- * underneath, so the title reads as a solid block.
+ * underneath, so the title reads as a solid block. `lit` draws the face in
+ * the slide's accent (the glowing 38°C).
  */
-function Extrude({ px, children, center }: { px: number; children: ReactNode; center?: boolean }) {
+function Extrude({ px, children, center, lit }: { px: number; children: ReactNode; center?: boolean; lit?: boolean }) {
   const c = useColors();
   const layers = Math.max(4, Math.round(px * 0.06));
-  const style = t(px, '800', c.ink, { textAlign: center ? 'center' : 'left' });
+  const style = t(px, '800', lit ? c.accent : c.ink, { textAlign: center ? 'center' : 'left' });
   return (
     <View>
       {Array.from({ length: layers }, (_, i) => {
@@ -216,10 +222,10 @@ function Offscript({ s }: { s: Sizes }) {
   );
 }
 
-function Card({ s, n, title, text }: { s: Sizes; n?: number; title: string; text: string }) {
+function Card({ s, n, title, text, grow }: { s: Sizes; n?: number; title: string; text: string; grow?: boolean }) {
   const c = useColors();
   return (
-    <View style={{ borderRadius: 32, padding: clamp(s.width * 0.02, 22, 32), gap: 12, backgroundColor: c.fill, minHeight: s.phone ? undefined : 220 }}>
+    <View style={{ borderRadius: 32, padding: clamp(s.width * 0.02, 22, 32), gap: 12, backgroundColor: c.fill, minHeight: s.phone ? undefined : 220, flex: grow ? 1 : undefined }}>
       {n !== undefined && (
         <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={t(24, '800', c.bg === '#FFFFFF' ? '#FFFFFF' : c.bg)}>{n}</Text>
@@ -231,21 +237,91 @@ function Card({ s, n, title, text }: { s: Sizes; n?: number; title: string; text
   );
 }
 
-/** Cards that swing in one after another. */
-function FlipCards({ s, from, items }: { s: Sizes; from: number; items: { n?: number; title: string; text: string }[] }) {
+type CardMotion = 'flip' | 'drop' | 'deal';
+
+/**
+ * A row of cards (a column on phones), each row with its own entrance:
+ * `flip` swings them in, `drop` lets them fall into place one step at a time
+ * while a line draws across beneath, `deal` fans them out of one stack.
+ */
+function CardRow({ s, from, motion, items }: { s: Sizes; from: number; motion: CardMotion; items: { n?: number; title: string; text: string }[] }) {
+  const rowW = useSharedValue(0);
+  const rowH = useSharedValue(0);
+  const delay = 150 + from * 140;
   return (
-    <View style={{ flexDirection: s.phone ? 'column' : 'row', gap: 20, alignSelf: 'stretch', marginTop: 12 }}>
-      {items.map((it, i) => (
-        <View key={it.title} style={{ flex: s.phone ? undefined : 1 }}>
-          <Rise order={from + i} kind="flip">
-            <View style={{ alignSelf: 'stretch' }}>
-              <Card s={s} {...it} />
+    <View style={{ alignSelf: 'stretch', marginTop: 12, gap: 28 }}>
+      <View
+        onLayout={(e) => {
+          rowW.set(e.nativeEvent.layout.width);
+          rowH.set(e.nativeEvent.layout.height);
+        }}
+        style={{ flexDirection: s.phone ? 'column' : 'row', gap: 20, alignSelf: 'stretch' }}>
+        {items.map((it, i) =>
+          motion === 'deal' ? (
+            <Deal key={it.title} i={i} n={items.length} delay={delay} rowW={rowW} rowH={rowH} grow={!s.phone}>
+              <Card s={s} {...it} grow={!s.phone} />
+            </Deal>
+          ) : (
+            <View key={it.title} style={{ flex: s.phone ? undefined : 1 }}>
+              <Rise order={motion === 'drop' ? from + i * 1.6 : from + i} kind={motion}>
+                <View style={{ alignSelf: 'stretch' }}>
+                  <Card s={s} {...it} />
+                </View>
+              </Rise>
             </View>
-          </Rise>
-        </View>
-      ))}
+          ),
+        )}
+      </View>
+      {motion === 'drop' && !s.phone && <StepLine delay={delay} duration={items.length * 1.6 * 140 + 700} />}
     </View>
   );
+}
+
+/**
+ * One card of a dealt row: the cards land one by one on a fanned stack in the
+ * middle, then slide out to their places and straighten.
+ */
+function Deal({ i, n, delay, rowW, rowH, grow, children }: { i: number; n: number; delay: number; rowW: SharedValue<number>; rowH: SharedValue<number>; grow: boolean; children: ReactNode }) {
+  const show = useSharedValue(0);
+  const spread = useSharedValue(0);
+  const box = useSharedValue({ x: 0, y: 0, width: 0, height: 0 });
+  useEffect(() => {
+    show.set(withDelay(delay + i * 120, withTiming(1, { duration: 450, easing: EASE })));
+    spread.set(withDelay(delay + n * 120 + 450, withTiming(1, { duration: 1000, easing: EASE })));
+  }, [show, spread, delay, i, n]);
+  const style = useAnimatedStyle(() => {
+    const b = box.get();
+    const k = 1 - spread.get();
+    const fall = 1 - show.get();
+    return {
+      opacity: show.get(),
+      transform: [
+        { perspective: 1400 },
+        { translateX: (rowW.get() / 2 - (b.x + b.width / 2)) * k },
+        { translateY: (rowH.get() / 2 - (b.y + b.height / 2)) * k - fall * 60 },
+        { rotateX: `${fall * 40}deg` },
+        { rotateZ: `${(i - (n - 1) / 2) * 5 * k}deg` },
+        { scale: 1 - k * 0.1 },
+      ],
+      ...(WEB ? { filter: `blur(${fall * 8}px)` } : {}),
+    };
+  });
+  return (
+    <Animated.View onLayout={(e) => box.set(e.nativeEvent.layout)} style={[{ flex: grow ? 1 : undefined }, style]}>
+      {children}
+    </Animated.View>
+  );
+}
+
+/** A thin line that draws left to right under the steps as they land. */
+function StepLine({ delay, duration }: { delay: number; duration: number }) {
+  const c = useColors();
+  const v = useSharedValue(0);
+  useEffect(() => {
+    v.set(withDelay(delay, withTiming(1, { duration, easing: Easing.inOut(Easing.cubic) })));
+  }, [v, delay, duration]);
+  const style = useAnimatedStyle(() => ({ transform: [{ scaleX: v.get() }] }));
+  return <Animated.View style={[{ height: 4, borderRadius: 2, backgroundColor: c.accent, transformOrigin: 'left center' }, style]} />;
 }
 
 function CTA({ s, title, onPress }: { s: Sizes; title: string; onPress: () => void }) {
@@ -471,13 +547,13 @@ const SLIDES: Slide[] = [
     ],
   },
   {
-    theme: 'sand',
+    theme: 'ember',
     notes: 'Saturday, 2pm, 38 degrees. The queue at the water station is 40 deep. Someone collapses, and the two first-aiders rostered there never showed up.',
     lines: (s) => [
       <Big key="t" s={s} size="sub">
         Saturday · 2pm
       </Big>,
-      <Extrude key="h" px={clamp(s.width * 0.17, 96, 280)}>
+      <Extrude key="h" px={clamp(s.width * 0.17, 96, 280)} lit>
         38°C
       </Extrude>,
       <Big key="b" s={s} size="h2" max={0.8}>
@@ -580,10 +656,11 @@ const SLIDES: Slide[] = [
       <Big key="h" s={s} size="h2" max={0.8}>
         From radio call to help, <Grey>in four steps.</Grey>
       </Big>,
-      <FlipCards
+      <CardRow
         key="c"
         s={s}
         from={1}
+        motion="drop"
         items={[
           { n: 1, title: 'Say it', text: 'A volunteer just talks. No forms.' },
           { n: 2, title: 'AI writes it up', text: 'A clear report, checked for duplicates.' },
@@ -602,10 +679,11 @@ const SLIDES: Slide[] = [
       <Big key="h" s={s} size="h2" max={0.8}>
         AI does the legwork. <Grey>People make the calls.</Grey>
       </Big>,
-      <FlipCards
+      <CardRow
         key="c"
         s={s}
         from={1}
+        motion="deal"
         items={[
           { title: 'Mo approves', text: 'Every response, and every change to who stands where.' },
           { title: 'Leads step in', text: 'Critical with no answer in 30 seconds? The zone’s lead can approve.' },
@@ -648,10 +726,11 @@ const SLIDES: Slide[] = [
       <Big key="h" s={s} size="h2" max={0.8}>
         What we left out, <Grey>on purpose.</Grey>
       </Big>,
-      <FlipCards
+      <CardRow
         key="c"
         s={s}
         from={1}
+        motion="flip"
         items={[
           { title: 'A chatbot', text: 'Mo needs decisions, not a conversation.' },
           { title: 'Auto-dispatch', text: 'AI never sends anyone on its own.' },
