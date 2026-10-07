@@ -2,7 +2,7 @@
  * The pitch: problem, evidence, solution, live demo, close.
  *
  * Ground Control's own look: Apple's system type, muted solid colour slides
- * (ember, dark plum, dark blue) between off-white and near-black ones, 3D
+ * (ink, ember, dark plum, dark blue) between off-white and near-black ones, 3D
  * extruded titles, cards that each enter their own way, a radio transcript that types itself and cuts out, and a
  * tilted 3D festival map with a responder walking to an incident.
  *
@@ -32,7 +32,7 @@ import { Glyph } from '@/components/ui/glyph';
 
 /* ----------------------------- look and type ----------------------------- */
 
-type Theme = 'light' | 'dark' | 'ember' | 'plum' | 'midnight';
+type Theme = 'light' | 'dark' | 'ink' | 'ember' | 'plum' | 'midnight';
 
 interface Colors {
   bg: string;
@@ -50,6 +50,7 @@ interface Colors {
 const PALETTE: Record<Theme, Colors> = {
   light: { bg: '#FBFAF7', ink: '#1D1D1F', grey: '#8A8780', muted: '#6B6862', accent: '#3E4C8A', fill: '#F1EFEA', depth: '#DCDDE6', offscript: '#A4502A' },
   dark: { bg: '#0B0B0C', ink: '#F2F1EE', grey: '#8E8C87', muted: '#A9A7A1', accent: '#9AA6D6', fill: '#1B1B1D', depth: '#2E3A66', offscript: '#E0A458' },
+  ink: { bg: '#0C0F16', ink: '#F4F1EA', grey: '#9AA0AD', muted: '#C8CCD4', accent: '#9AA6D6', fill: 'rgba(244,241,234,0.08)', depth: '#2B3870', offscript: '#E3C27A' },
   ember: { bg: '#1C120D', ink: '#F2E9E1', grey: '#A8958A', muted: '#D6C6BA', accent: '#E0A458', fill: 'rgba(242,233,225,0.08)', depth: '#5A3418', offscript: '#E0A458' },
   plum: { bg: '#0E0816', ink: '#F4F1EA', grey: '#BDB2D2', muted: '#DED7E9', accent: '#C9B6F2', fill: 'rgba(244,241,234,0.1)', depth: '#2A1B3F', offscript: '#E3C27A' },
   midnight: { bg: '#0A1328', ink: '#F4F1EA', grey: '#B3BDD6', muted: '#DAE0EC', accent: '#F4F1EA', fill: 'rgba(244,241,234,0.1)', depth: '#030812', offscript: '#E3C27A' },
@@ -533,7 +534,7 @@ interface Slide {
 const SLIDES: Slide[] = [
   /* ===== 01 Problem ===== */
   {
-    theme: 'light',
+    theme: 'ink',
     turn: true,
     notes: 'Imagine you’re Mo, the safety lead at Riverside.',
     lines: (s) => [
