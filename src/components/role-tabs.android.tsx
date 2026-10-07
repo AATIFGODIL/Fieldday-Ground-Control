@@ -1,7 +1,7 @@
 import { DockTabs } from './dock-tabs';
 import type { TabSpec } from './role-tabs';
 
-/** Web has no system tab bar, so it gets the floating dock. */
+/** Android uses the same floating dock as web, so both look like one product. */
 export function RoleTabs(props: { tabs: TabSpec[]; base: string }) {
   return <DockTabs {...props} />;
 }
