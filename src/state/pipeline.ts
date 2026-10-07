@@ -9,6 +9,7 @@ import { activeRequirements } from '@/domain/coverage';
 import { compassDirection, dist, zoneAt } from '@/domain/geo';
 import { WALK_SPEED_MPS } from '@/domain/matching';
 import { greedyPlacement, validateMoves, type PlacementMove } from '@/domain/placement';
+import { countWith, onShiftIn, STAFF_SKILLS, targetFor, type TargetChange } from '@/domain/staffing';
 import { RELATED_RADIUS_M, relatedCandidates } from '@/domain/related';
 import { SKILL_LABELS, type Dispatch, type Incident, type ResponsePlan, type Urgency } from '@/domain/types';
 import type { ScenarioStep } from '@/sim/scenarios';
@@ -355,4 +356,32 @@ export function approveAndBrief(incidentId: string, plan: ResponsePlan): string 
   if ('error' in res) return res.error;
   void runBriefs(res.dispatches);
   return null;
+}
+
+/* ------------------------------ spoken staffing ------------------------------ */
+
+/**
+ * "More de-escalation at the Lawn Stage for the headliner" → new minimums.
+ * The AI only proposes numbers; code picks who moves; Mo approves.
+ */
+export async function askStaffing(
+  instruction: string,
+): Promise<{ ok: true; title: string; note: string; changes: TargetChange[] } | { ok: false; reason: string }> {
+  const s = useStore.getState();
+  const res = await api.staffing({
+    instruction,
+    localTime: localTime(),
+    temperatureC: s.temperatureC,
+    zones: s.festival.zones.map((z) => ({
+      id: z.id,
+      name: z.name,
+      kind: z.kind,
+      targets: [null, ...STAFF_SKILLS]
+        .map((k) => `${k ?? 'people'} ${countWith(onShiftIn(z.id, Object.values(s.volunteers)), k)} here / min ${targetFor(z, k, s.temperatureC)}`)
+        .join(', '),
+    })),
+  });
+  if (!res.ok) return { ok: false, reason: res.reason };
+  if (!res.data.understood) return { ok: false, reason: res.data.reasonIfNot ?? 'That doesn’t sound like a staffing change.' };
+  return { ok: true, title: res.data.summary, note: res.data.note, changes: res.data.changes };
 }
