@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Avatar } from '@/components/incident/parts';
 import { SiteMap } from '@/components/map/site-map';
@@ -8,6 +8,7 @@ import { Glyph } from '@/components/ui/glyph';
 import { Card, Header, Row, Txt } from '@/components/ui/primitives';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { ROLE_LABELS, SKILL_LABELS } from '@/domain/types';
+import { useScreenSize } from '@/hooks/use-screen-size';
 import { useTheme } from '@/hooks/use-theme';
 import { dropDot, useStore, zoneById } from '@/state/store';
 import { useTour } from '@/state/tour';
@@ -16,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 /** Shared live map for every role. In the demo, the safety lead can drag people around. */
 export function MapScreen({ canOperate }: { canOperate: boolean }) {
   const t = useTheme();
-  const { height: winH } = useWindowDimensions();
+  const { height: winH } = useScreenSize();
   const params = useLocalSearchParams<{ operator?: string }>();
   const mode = useStore((s) => s.mode);
   const volunteers = useStore((s) => s.volunteers);
