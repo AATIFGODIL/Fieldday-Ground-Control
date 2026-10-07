@@ -10,7 +10,7 @@ import { Spacing } from '@/constants/theme';
 import { INCIDENT_TYPE_LABELS } from '@/domain/types';
 import { useSimNow } from '@/hooks/use-sim-now';
 import { useTheme } from '@/hooks/use-theme';
-import { useStore, zoneById } from '@/state/store';
+import { markNoticeRead, useStore, zoneById } from '@/state/store';
 
 /** A volunteer's home: am I needed, how do I report, am I on shift. */
 export default function VolunteerHome() {
@@ -21,7 +21,10 @@ export default function VolunteerHome() {
   const dispatches = useStore((s) => s.dispatches);
   const incidents = useStore((s) => s.incidents);
   const links = useStore((s) => s.links);
+  // Read the raw list and filter here: a selector that builds a new array makes the store look changed on every render.
+  const notices = useStore((s) => s.notices);
   if (!me) return null;
+  const moved = notices.filter((n) => n.to === me.id && n.kind === 'moved' && !n.read).slice(0, 1);
 
   const active = dispatches.filter((d) => d.volunteerId === me.id && (d.status === 'notified' || d.status === 'acknowledged'));
   const mine = incidents.filter((i) => i.reporterId === me.id);
@@ -58,6 +61,26 @@ export default function VolunteerHome() {
           </Appear>
         );
       })}
+
+      {moved.map((n) => (
+        <Appear key={n.id}>
+          <Card tone="strong">
+            <Row style={{ alignItems: 'flex-start' }}>
+              <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: t.accent, alignItems: 'center', justifyContent: 'center' }}>
+                <Glyph name="pin" size={22} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1, gap: Spacing.one }}>
+                <Txt variant="heading">{n.title}</Txt>
+                <Txt variant="body">{n.body}</Txt>
+              </View>
+            </Row>
+            <Row>
+              <Button title="Show me on the map" style={{ flex: 1 }} onPress={() => router.push('/volunteer/map')} />
+              <Button title="Got it" variant="secondary" style={{ flex: 1 }} onPress={() => markNoticeRead(n.id)} />
+            </Row>
+          </Card>
+        </Appear>
+      ))}
 
       <Tappable onPress={() => router.push('/volunteer/report')} accessibilityLabel="Report something">
         <View style={{ alignItems: 'center', gap: Spacing.three, paddingVertical: Spacing.four, borderRadius: 28, backgroundColor: t.backgroundElement }}>
