@@ -18,9 +18,8 @@ export default function LeadLayout() {
     <RoleTabs
       base="/lead"
       tabs={[
-        { name: 'index', label: 'Incidents', sf: 'exclamationmark.triangle.fill', md: 'warning', badge: open ? String(open) : undefined },
-        { name: 'map', label: 'Map', sf: 'map.fill', md: 'map' },
-        { name: 'team', label: 'Team', sf: 'person.3.fill', md: 'groups' },
+        { name: 'index', label: 'My zone', sf: 'exclamationmark.triangle.fill', md: 'warning', glyph: 'alert', badge: open ? String(open) : undefined },
+        { name: 'map', label: 'Map', sf: 'map.fill', md: 'map', glyph: 'map' },
       ]}
     />
   );

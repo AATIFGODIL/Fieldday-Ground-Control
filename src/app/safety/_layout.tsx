@@ -15,11 +15,8 @@ export default function SafetyLayout() {
     <RoleTabs
       base="/safety"
       tabs={[
-        { name: 'index', label: 'Command', sf: 'shield.lefthalf.filled', md: 'shield', badge: open ? String(open) : undefined },
-        { name: 'map', label: 'Map', sf: 'map.fill', md: 'map' },
-        { name: 'placement', label: 'Placement', sf: 'person.crop.rectangle.stack.fill', md: 'group_add' },
-        { name: 'coverage', label: 'Coverage', sf: 'calendar.badge.exclamationmark', md: 'event_busy' },
-        { name: 'zones', label: 'Zones', sf: 'square.dashed', md: 'select_all' },
+        { name: 'index', label: 'Now', sf: 'bolt.shield.fill', md: 'shield', glyph: 'shield', badge: open ? String(open) : undefined },
+        { name: 'map', label: 'Map', sf: 'map.fill', md: 'map', glyph: 'map' },
       ]}
     />
   );

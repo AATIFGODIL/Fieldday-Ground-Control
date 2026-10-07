@@ -17,10 +17,9 @@ export default function VolunteerLayout() {
     <RoleTabs
       base="/volunteer"
       tabs={[
-        { name: 'index', label: 'Home', sf: 'house.fill', md: 'home', badge: pending ? String(pending) : undefined },
-        { name: 'report', label: 'Report', sf: 'exclamationmark.bubble.fill', md: 'campaign' },
-        { name: 'map', label: 'Map', sf: 'map.fill', md: 'map' },
-        { name: 'shift', label: 'Shift', sf: 'clock.fill', md: 'schedule' },
+        { name: 'index', label: 'Home', sf: 'house.fill', md: 'home', glyph: 'home', badge: pending ? String(pending) : undefined },
+        { name: 'report', label: 'Report', sf: 'mic.fill', md: 'mic', glyph: 'mic' },
+        { name: 'map', label: 'Map', sf: 'map.fill', md: 'map', glyph: 'map' },
       ]}
     />
   );
