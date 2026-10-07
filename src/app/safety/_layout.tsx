@@ -16,6 +16,7 @@ export default function SafetyLayout() {
       base="/safety"
       tabs={[
         { name: 'index', label: 'Now', sf: 'bolt.shield.fill', md: 'shield', glyph: 'shield', badge: open ? String(open) : undefined },
+        { name: 'staff', label: 'Staff', sf: 'person.3.fill', md: 'groups', glyph: 'users' },
         { name: 'map', label: 'Map', sf: 'map.fill', md: 'map', glyph: 'map' },
       ]}
     />
