@@ -21,7 +21,7 @@ export const IncidentTypeSchema = z.enum([
   'other',
 ]);
 export const UrgencySchema = z.enum(['low', 'medium', 'high', 'critical']);
-const SkillSchema = z.enum(['first_aid', 'wwcc', 'rsa', 'crowd_control', 'security_licence']);
+const SkillSchema = z.enum(['first_aid', 'wwcc', 'rsa', 'crowd_control', 'security_licence', 'deescalation']);
 
 export type AIResult<T> = { ok: true; data: T } | { ok: false; reason: string };
 

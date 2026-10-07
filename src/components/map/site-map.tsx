@@ -34,7 +34,7 @@ const VB = { x: -30, y: -60, w: 660, h: 545 };
 
 const LABEL_FONT = Platform.select({ web: '-apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif', default: undefined });
 
-const SKILL_PRIORITY: Skill[] = ['first_aid', 'security_licence', 'crowd_control', 'wwcc', 'rsa'];
+const SKILL_PRIORITY: Skill[] = ['first_aid', 'security_licence', 'deescalation', 'crowd_control', 'wwcc', 'rsa'];
 
 /** Leads read darker than volunteers; certified volunteers a touch stronger than the rest. */
 export function dotColor(v: Volunteer): string {

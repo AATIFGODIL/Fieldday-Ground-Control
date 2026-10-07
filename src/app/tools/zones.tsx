@@ -10,7 +10,7 @@ import { seedFestival } from '@/sim/seed/festival';
 import { updateZone, useStore } from '@/state/store';
 
 const KINDS = Object.keys(ZONE_KIND_LABELS) as ZoneKind[];
-const REQ_ROWS: (Skill | null)[] = [null, 'first_aid', 'security_licence', 'crowd_control', 'rsa', 'wwcc'];
+const REQ_ROWS: (Skill | null)[] = [null, 'first_aid', 'security_licence', 'deescalation', 'crowd_control', 'rsa', 'wwcc'];
 
 /** Preset zones the safety lead can move, reshape, rename and re-type. */
 export default function Zones() {

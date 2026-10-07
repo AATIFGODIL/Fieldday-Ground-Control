@@ -14,6 +14,7 @@ const SKILLS: { key: Skill; help: string }[] = [
   { key: 'wwcc', help: 'Working With Children Check' },
   { key: 'rsa', help: 'Responsible Service of Alcohol (licensed areas)' },
   { key: 'crowd_control', help: 'Crowd management experience or licence' },
+  { key: 'deescalation', help: 'Trained to calm down tense situations' },
   { key: 'security_licence', help: 'Security licence' },
 ];
 const COMMON_LANGS = ['Mandarin', 'Arabic', 'Vietnamese', 'Hindi', 'Spanish', 'Greek', 'Italian', 'Korean', 'Cantonese', 'Auslan'];

@@ -171,6 +171,7 @@ function jobGlyph(skills: Candidate['matchedSkills'], role?: string): GlyphName 
   const r = role?.toLowerCase() ?? '';
   if (skills.includes('first_aid') || r.includes('first aid') || r.includes('medic')) return 'cross';
   if (skills.includes('security_licence') || r.includes('secur')) return 'shield';
+  if (skills.includes('deescalation') || r.includes('calm') || r.includes('de-esc')) return 'users';
   if (skills.includes('crowd_control') || r.includes('crowd')) return 'users';
   return 'person';
 }
@@ -180,6 +181,7 @@ const SKILL_CHIP: Partial<Record<Candidate['skills'][number], string>> = {
   first_aid: 'First aid',
   security_licence: 'Security',
   crowd_control: 'Crowd',
+  deescalation: 'De-escalation',
   wwcc: 'Kids check',
   rsa: 'RSA',
 };

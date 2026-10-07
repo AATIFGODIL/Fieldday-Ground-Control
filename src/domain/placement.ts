@@ -9,7 +9,7 @@ export interface PlacementMove {
 }
 
 /** Scarcest skills first, so they're not used up filling generic headcount. */
-const SKILL_PRIORITY: Skill[] = ['security_licence', 'wwcc', 'first_aid', 'rsa', 'crowd_control'];
+const SKILL_PRIORITY: Skill[] = ['security_licence', 'wwcc', 'first_aid', 'deescalation', 'rsa', 'crowd_control'];
 
 /**
  * Deterministic greedy placement. Used as the fallback when the AI placement

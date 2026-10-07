@@ -108,6 +108,7 @@ export const SkillColors: Record<Skill | 'none', string> = {
   crowd_control: GREY,
   rsa: GREY,
   wwcc: GREY,
+  deescalation: GREY,
   none: GREY,
 };
 export const RoleColors: Record<Role, string> = { volunteer: GREY, location_lead: GREY, safety_lead: GREY };

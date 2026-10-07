@@ -8,7 +8,7 @@
 
 export type Vec = { x: number; y: number };
 
-export type Skill = 'first_aid' | 'wwcc' | 'rsa' | 'crowd_control' | 'security_licence';
+export type Skill = 'first_aid' | 'wwcc' | 'rsa' | 'crowd_control' | 'security_licence' | 'deescalation';
 
 export const SKILL_LABELS: Record<Skill, string> = {
   first_aid: 'First aid',
@@ -16,6 +16,7 @@ export const SKILL_LABELS: Record<Skill, string> = {
   rsa: 'RSA',
   crowd_control: 'Crowd management',
   security_licence: 'Security licence',
+  deescalation: 'De-escalation',
 };
 
 export const SKILL_SHORT: Record<Skill, string> = {
@@ -24,6 +25,7 @@ export const SKILL_SHORT: Record<Skill, string> = {
   rsa: 'RSA',
   crowd_control: 'Crowd',
   security_licence: 'Sec',
+  deescalation: 'De-esc',
 };
 
 export type Role = 'volunteer' | 'location_lead' | 'safety_lead';
@@ -53,6 +55,8 @@ export interface Volunteer {
   availability: Slot[];
   status: ShiftStatus;
   checkedInAt?: number;
+  /** When the safety lead last moved them to another zone (so we don't keep moving the same person). */
+  movedAt?: number;
 }
 
 export type ZoneKind =
@@ -281,6 +285,7 @@ export type NoticeKind =
   | 'escalated_approval'
   | 'coverage'
   | 'offsite'
+  | 'moved'
   | 'info';
 
 export interface Notice {
