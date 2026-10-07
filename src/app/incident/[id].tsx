@@ -1,26 +1,26 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { ActivityIndicator, Alert } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
-import {
-  CandidateLine,
-  DispatchProgress,
-  IncidentLog,
-  PlanEditor,
-  PlanView,
-  ReportSummary,
-  STATUS_LABEL,
-  statusColor,
-} from '@/components/incident/parts';
+import { CandidateLine, DispatchProgress, firstName, IncidentLog, PlanEditor, PlanView, ReportSummary, STATUS_LABEL } from '@/components/incident/parts';
 import { SiteMap } from '@/components/map/site-map';
-import { Banner, Button, Card, Pill, Row, Screen, Section, Txt } from '@/components/ui/primitives';
-import { UrgencyColors } from '@/constants/theme';
+import { Glyph } from '@/components/ui/glyph';
+import { Appear, Banner, Button, Card, Pill, Row, Screen, Section, Txt, UrgencyPill } from '@/components/ui/primitives';
+import { settle } from '@/constants/motion';
+import { Spacing } from '@/constants/theme';
 import { canApprove, canResolveLinks, escalationUnlocksAt, pendingLinksFor } from '@/domain/escalation';
+import { INCIDENT_TYPE_LABELS, type ResponsePlan } from '@/domain/types';
 import { useSimNow } from '@/hooks/use-sim-now';
 import { useTheme } from '@/hooks/use-theme';
 import { approveAndBrief } from '@/state/pipeline';
 import { formatClock, reopenIncident, resolveIncident, useStore, zoneById } from '@/state/store';
 
+/**
+ * One incident, top to bottom in the order you need it:
+ * what happened → where → who to send → approve.
+ */
 export default function IncidentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const t = useTheme();
@@ -31,11 +31,22 @@ export default function IncidentScreen() {
   const dispatches = useStore((s) => s.dispatches);
   const user = useStore((s) => (s.currentUserId ? s.volunteers[s.currentUserId] : undefined));
   const [editing, setEditing] = useState(false);
+  // Mo's edits to the AI's wording, tied to the suggestion they were made on.
+  const [draft, setDraft] = useState<{ base: ResponsePlan; plan: ResponsePlan } | null>(null);
+  const [showLog, setShowLog] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!sentTo) return;
+    const id = setTimeout(() => setSentTo(null), 1800);
+    return () => clearTimeout(id);
+  }, [sentTo]);
 
   if (!incident || !user) {
     return (
       <Screen edges={[]}>
-        <Txt variant="heading">Incident not found.</Txt>
+        <Txt variant="heading">This incident isn’t here any more.</Txt>
+        <Button title="Go back" onPress={() => router.back()} />
       </Screen>
     );
   }
@@ -44,92 +55,130 @@ export default function IncidentScreen() {
   const isLead = user.role !== 'volunteer';
   const check = canApprove(user, incident, links, now);
   const pending = pendingLinksFor(incident.id, links);
-  const myDispatches = dispatches.filter((d) => d.incidentId === incident.id);
+  const mine = dispatches.filter((d) => d.incidentId === incident.id);
   const awaiting = incident.status === 'suggested' || incident.status === 'no_suggestion';
+
+  // The AI's plan, or Mo's edited copy of it if they've changed the wording.
+  const plan = draft && draft.base === incident.suggestion ? draft.plan : incident.suggestion;
+  const edited = !!draft && draft.base === incident.suggestion;
 
   const doApprove = (plan: Parameters<typeof approveAndBrief>[1]) => {
     const err = approveAndBrief(incident.id, plan);
-    if (err) Alert.alert("Can't approve", err);
-    else setEditing(false);
+    if (err) {
+      Alert.alert('Can’t send yet', err);
+      return;
+    }
+    setEditing(false);
+    const names = plan.assignments.map((a) => firstName(useStore.getState().volunteers[a.volunteerId]?.name));
+    setSentTo(names.join(' and '));
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   };
 
-  // Location lead countdown before they may step in.
   const unlocksAt = escalationUnlocksAt(incident);
   const secondsLeft = Math.max(0, Math.ceil((unlocksAt - now) / 1000));
   const leadWaiting = user.role === 'location_lead' && awaiting && secondsLeft > 0;
 
   return (
+    <View style={{ flex: 1 }}>
     <Screen edges={[]}>
       <Stack.Screen options={{ title: incident.ref }} />
 
-      <Row style={{ justifyContent: 'space-between' }}>
-        <Pill label={STATUS_LABEL[incident.status].toUpperCase()} color={statusColor(incident.status)} solid />
-        <Txt variant="caption">{zone?.name} · logged {formatClock(incident.createdAt)}</Txt>
-      </Row>
+      <View style={{ gap: Spacing.two }}>
+        <Row style={{ justifyContent: 'space-between' }}>
+          <UrgencyPill urgency={incident.urgency} />
+          <Txt variant="caption">{formatClock(incident.createdAt)}</Txt>
+        </Row>
+        <Txt variant="title">{INCIDENT_TYPE_LABELS[incident.type]}</Txt>
+        <Txt variant="label">{isLead ? STATUS_LABEL[incident.status] : 'Thanks — the safety lead has this.'}</Txt>
+      </View>
 
       {incident.status === 'merged' && incident.mergedInto && (
-        <Banner tone="info" title="Merged as a duplicate">
+        <Banner tone="info" title="Merged with another report">
           <Button
-            title={`Open ${incidents.find((i) => i.id === incident.mergedInto)?.ref}`}
-            size="sm"
+            title="Open the main report"
             variant="secondary"
             onPress={() => router.replace({ pathname: '/incident/[id]', params: { id: incident.mergedInto! } })}
           />
         </Banner>
       )}
 
-      {pending.map((l) => {
-        const otherId = l.a === incident.id ? l.b : l.a;
-        const other = incidents.find((i) => i.id === otherId);
-        return (
-          <Banner
-            key={l.id}
-            tone="danger"
-            title={`Possibly the same event as ${other?.ref}`}
-            body={`${l.source === 'ai' ? `AI · ${Math.round(l.confidence * 100)}% likely same` : 'Rule-based (AI check unavailable)'} — ${l.reason}`}>
-            <Row style={{ marginTop: 6 }}>
+      {isLead &&
+        pending.map((l) => {
+          const otherId = l.a === incident.id ? l.b : l.a;
+          const other = incidents.find((i) => i.id === otherId);
+          const otherReporter = useStore.getState().volunteers[other?.reporterId ?? ''];
+          return (
+            <Appear key={l.id}>
+            <Card tone="ai">
+              <Row style={{ alignItems: 'flex-start' }}>
+                <Glyph name="link" size={26} color={t.ai} />
+                <View style={{ flex: 1, gap: Spacing.one }}>
+                  <Txt variant="heading">This might be the same as {firstName(otherReporter?.name)}’s report</Txt>
+                  <Txt variant="body">{l.reason}</Txt>
+                  {l.source === 'ai' && (
+                    <Txt variant="label" color={t.ai}>
+                      AI: {Math.round(l.confidence * 100)}% likely the same
+                    </Txt>
+                  )}
+                </View>
+              </Row>
               <Button
                 title="Compare side by side"
-                size="sm"
+                variant="secondary"
                 onPress={() => router.push({ pathname: '/incident/compare', params: { link: l.id } })}
               />
-            </Row>
-            {isLead && !canResolveLinks(user, incident, now) && (
-              <Txt variant="caption">The safety lead must review this before any response is approved.</Txt>
-            )}
-          </Banner>
-        );
-      })}
+              {!canResolveLinks(user, incident, now) && <Txt variant="caption">The safety lead decides this first.</Txt>}
+            </Card>
+            </Appear>
+          );
+        })}
 
       <Card>
+        <Row>
+          <Glyph name="sparkle" size={18} color={incident.structuredBy === 'ai' ? t.ai : t.textSecondary} />
+          <Txt variant="label" color={incident.structuredBy === 'ai' ? t.ai : undefined}>
+            {incident.structuredBy === 'ai' ? 'Written up by AI from the report' : 'Written up by hand'}
+          </Txt>
+        </Row>
         <ReportSummary incident={incident} />
       </Card>
 
       {incidents
         .filter((i) => i.mergedInto === incident.id)
         .map((dup) => (
-          <Card key={dup.id} onPress={() => router.push({ pathname: '/incident/[id]', params: { id: dup.id } })}>
-            <Txt variant="label">ALSO REPORTED · {dup.ref} (MERGED)</Txt>
+          <Card key={dup.id}>
+            <Txt variant="label">Also reported</Txt>
             <ReportSummary incident={dup} compact />
           </Card>
         ))}
 
-      <SiteMap
-        focus={{ center: incident.location, radius: Math.max(90, ...myDispatches.map((d) => d.distanceM * 0.75), ...incident.candidates.slice(0, 2).map((c) => c.distanceM * 0.8)) }}
-        height={220}
-        interactive={false}
-        highlightIds={awaiting ? incident.candidates.map((c) => c.volunteerId) : myDispatches.map((d) => d.volunteerId)}
-        pathDispatchIds={myDispatches.map((d) => d.id)}
-        focusIncidentIds={[incident.id]}
-      />
+      <View style={{ gap: Spacing.two }}>
+        <SiteMap
+          focus={{
+            center: incident.location,
+            radius: Math.max(90, ...mine.map((d) => d.distanceM * 0.75), ...incident.candidates.slice(0, 2).map((c) => c.distanceM * 0.8)),
+          }}
+          height={240}
+          interactive={false}
+          highlightIds={awaiting ? incident.suggestion?.assignments.map((a) => a.volunteerId) ?? incident.candidates.slice(0, 1).map((c) => c.volunteerId) : mine.map((d) => d.volunteerId)}
+          pathDispatchIds={mine.map((d) => d.id)}
+          focusIncidentIds={[incident.id]}
+        />
+        <Txt variant="caption">
+          {zone?.name}
+          {incident.locationNote ? ` · ${incident.locationNote}` : ''}
+        </Txt>
+      </View>
 
       {isLead && incident.status === 'logged' && (
         <Card>
           <Row>
-            <ActivityIndicator />
-            <Txt variant="body">Drafting a suggested response from the nearest skill-matched volunteers…</Txt>
+            <ActivityIndicator color={t.ai} />
+            <Txt variant="body" style={{ flex: 1 }}>
+              Finding the nearest free people with the right skills…
+            </Txt>
           </Row>
-          {incident.candidates.map((c) => (
+          {incident.candidates.slice(0, 2).map((c) => (
             <CandidateLine key={c.volunteerId} c={c} />
           ))}
         </Card>
@@ -137,44 +186,67 @@ export default function IncidentScreen() {
 
       {isLead && awaiting && (
         <Section
-          title={incident.status === 'suggested' && !editing ? 'AI-suggested response · needs human approval' : 'Write the response'}
+          title={incident.status === 'suggested' && !editing ? 'Suggested response' : 'Who should go?'}
           right={
             incident.status === 'suggested' ? (
-              <Button title={editing ? 'Use AI plan' : 'Edit'} variant="ghost" size="sm" onPress={() => setEditing((e) => !e)} />
+              <Pressable hitSlop={10} onPress={() => setEditing((e) => !e)}>
+                <Txt variant="label" color={t.accent}>
+                  {editing ? 'Use suggestion' : 'Change'}
+                </Txt>
+              </Pressable>
             ) : undefined
           }>
           {incident.status === 'no_suggestion' && (
-            <Banner tone="warn" title="No AI suggestion — a human must write this response" body={incident.suggestionFailReason} />
+            <Txt variant="caption">The AI couldn’t suggest a response this time, so pick who to send. The nearest match is already ticked.</Txt>
           )}
           {leadWaiting && (
             <Banner
               tone="info"
-              title={`Waiting for the safety lead · you can approve in ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')}`}
-              body={`Location leads can step in if there's no safety-lead response within ${incident.urgency === 'critical' ? '30 seconds (critical)' : '2 minutes'}. Your approval is logged and the safety lead is notified.`}
+              title={`Mo has ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')} to respond`}
+              body={`If the safety lead hasn’t approved within ${incident.urgency === 'critical' ? '30 seconds' : '2 minutes'}, you can. It’s logged and they’re told.`}
             />
           )}
           {incident.status === 'suggested' && !editing && incident.suggestion ? (
-            <Card style={{ borderColor: t.tint, borderWidth: 1.5 }}>
-              <PlanView plan={incident.suggestion} candidates={incident.candidates} />
+            <Appear>
+            <Card tone="ai">
+              <Row>
+                <Glyph name="sparkle" size={18} color={t.ai} />
+                <Txt variant="label" color={t.ai} style={{ flex: 1 }}>
+                  AI suggestion · you decide
+                </Txt>
+                {edited && <Pill label="Edited" tone="accent" />}
+              </Row>
+              <PlanView plan={plan!} candidates={incident.candidates} onChange={(p) => setDraft({ base: incident.suggestion!, plan: p })} />
               <Button
-                title={check.allowed ? `Approve & dispatch ${incident.suggestion.assignments.length}` : check.reason}
+                title={
+                  check.allowed
+                    ? `Approve and send ${plan!.assignments.length === 1 ? '1 person' : `${plan!.assignments.length} people`}`
+                    : check.reason
+                }
                 size="lg"
-                variant={incident.urgency === 'critical' ? 'danger' : 'primary'}
+                icon={check.allowed ? <Glyph name="check" size={22} color="#FFFFFF" strokeWidth={3} /> : undefined}
                 disabled={!check.allowed}
-                onPress={() => doApprove(incident.suggestion!)}
+                onPress={() =>
+                  doApprove(
+                    edited
+                      ? { ...plan!, source: 'manual', authorId: user.id, reasoning: `${plan!.reasoning} (Wording edited by ${firstName(user.name)} before sending.)` }
+                      : plan!,
+                  )
+                }
               />
               {check.allowed && check.escalated && (
-                <Txt variant="caption" color={UrgencyColors.high}>You are approving as location lead; this is logged and the safety lead will be notified.</Txt>
+                <Txt variant="caption">You’re approving as location lead. This is logged and Mo is told.</Txt>
               )}
             </Card>
+            </Appear>
           ) : (
-            <Card>
+            <Card tone="strong">
               <PlanEditor
                 incident={incident}
                 initial={editing ? incident.suggestion : undefined}
                 authorId={user.id}
                 disabled={!check.allowed}
-                submitLabel={check.allowed ? 'Approve & dispatch' : check.reason}
+                submitLabel={check.allowed ? 'Approve and send' : check.reason}
                 onSubmit={doApprove}
               />
             </Card>
@@ -185,44 +257,53 @@ export default function IncidentScreen() {
       {incident.approval && incident.approvedPlan && (
         <Section title="Response">
           <Card>
-            <Row style={{ flexWrap: 'wrap' }}>
-              <Pill label={incident.approvedPlan.source === 'ai' ? 'AI PLAN' : 'HUMAN PLAN'} />
-              <Txt variant="caption">
-                Approved by {incident.approval.byName} at {formatClock(incident.approval.at)}
-                {incident.approval.escalated ? ' (location lead, escalated)' : ''}
-              </Txt>
-            </Row>
-            {myDispatches.map((d) => (
+            <Txt variant="caption">
+              Approved by {incident.approval.byName} at {formatClock(incident.approval.at)}
+              {incident.approval.escalated ? ' (stepped in as location lead)' : ''}
+            </Txt>
+            {mine.map((d) => (
               <DispatchProgress key={d.id} d={d} />
             ))}
-            <Txt variant="caption">
-              <Txt variant="caption" style={{ fontWeight: '800' }}>Expect: </Txt>
-              {incident.approvedPlan.whatToExpect}
-            </Txt>
           </Card>
           {isLead && incident.status === 'approved' && (
-            <Row>
-              <Button title="Mark resolved" style={{ flex: 1 }} onPress={() => resolveIncident(incident.id)} />
-              {myDispatches.some((d) => d.status === 'declined') && (
-                <Button title="Choose new responder" variant="secondary" style={{ flex: 1 }} onPress={() => reopenIncident(incident.id)} />
+            <View style={{ gap: Spacing.two }}>
+              <Button title="Mark as resolved" onPress={() => resolveIncident(incident.id)} />
+              {mine.some((d) => d.status === 'declined') && (
+                <Button title="Send someone else" variant="secondary" onPress={() => reopenIncident(incident.id)} />
               )}
-            </Row>
+            </View>
           )}
         </Section>
       )}
 
-      {!isLead && (
-        <Card>
-          <Txt variant="caption">
-            Thanks for reporting. The safety lead has been notified
-            {incident.status === 'approved' ? ' and responders are on their way.' : '.'}
-          </Txt>
-        </Card>
-      )}
-
-      <Section title="Activity">
-        <IncidentLog incidentId={incident.id} />
-      </Section>
+      <Pressable onPress={() => setShowLog((v) => !v)} hitSlop={8}>
+        <Txt variant="label" color={t.accent}>
+          {showLog ? 'Hide history' : 'Show history'}
+        </Txt>
+      </Pressable>
+      {showLog && <IncidentLog incidentId={incident.id} />}
     </Screen>
+      {sentTo && (
+        <Animated.View entering={FadeIn.duration(260)} exiting={FadeOut.duration(320)} pointerEvents="none" style={[StyleSheet.absoluteFill, styles.burstWrap, { backgroundColor: t.scrim }]}>
+          <Animated.View entering={settle(60, 520)} style={[styles.burst, { backgroundColor: t.background }]}>
+            <View style={[styles.burstCircle, { backgroundColor: t.success }]}>
+              <Glyph name="check" size={56} color="#FFFFFF" strokeWidth={3} />
+            </View>
+            <Txt variant="heading" center>
+              Sent to {sentTo}
+            </Txt>
+            <Txt variant="caption" center>
+              Their phone is telling them where to go.
+            </Txt>
+          </Animated.View>
+        </Animated.View>
+      )}
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  burstWrap: { alignItems: 'center', justifyContent: 'center' },
+  burst: { width: 280, borderRadius: 32, padding: Spacing.four, alignItems: 'center', gap: Spacing.two },
+  burstCircle: { width: 104, height: 104, borderRadius: 52, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.two },
+});
