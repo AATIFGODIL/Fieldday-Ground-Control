@@ -1,29 +1,27 @@
 /**
- * The pitch, as a keynote: one idea per slide, Apple's system type, big and
- * calm. Arrow keys, swipe, or the buttons to move. Lives at /pitch.
+ * The pitch, as a keynote: hook, problem, evidence, solution, how it works.
+ * Apple's system type, white on black, one quiet accent. Arrow keys, space or
+ * swipe to move. Lives at /pitch.
  */
 import { router } from 'expo-router';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions, type TextStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 
 import { Glyph } from '@/components/ui/glyph';
 import { EASE_OUT } from '@/constants/motion';
 
 /* ----------------------------- look and type ----------------------------- */
 
+const BG = '#000000';
 const INK = '#F5F5F7';
 const SOFT = '#A1A1A6';
-const BG = '#000000';
-const C = {
-  blue: '#2F6BFF',
-  violet: '#A259FF',
-  orange: '#FF9F0A',
-  pink: '#FF375F',
-  green: '#30D158',
-  teal: '#40C8E0',
-};
+const FAINT = '#86868B';
+/** The one accent, used sparingly: a word or a number per slide at most. */
+const BLUE = '#2997FF';
+/** Offscript's own colour. */
+const OFFSCRIPT_ORANGE = '#FF9F0A';
 
 /** Apple's own typeface: San Francisco on Apple devices, the closest system face elsewhere. */
 const APPLE = Platform.select({
@@ -51,16 +49,31 @@ function useSizes() {
     lead: clamp(w * 0.024, 21, 36),
     body: clamp(w * 0.018, 19, 28),
     label: clamp(w * 0.014, 17, 22),
-    pad: clamp(width * 0.07, 24, 128),
+    pad: clamp(width * 0.08, 24, 144),
   };
 }
 type Sizes = ReturnType<typeof useSizes>;
 
+/* --------------------------------- motion --------------------------------- */
+
+/** One line of a slide: fades in and rises into place, after the lines before it. */
+function Reveal({ order, children, center }: { order: number; children: ReactNode; center?: boolean }) {
+  const v = useSharedValue(0);
+  useEffect(() => {
+    v.set(withDelay(120 + order * 140, withTiming(1, { duration: 900, easing: EASE_OUT })));
+  }, [v, order]);
+  const style = useAnimatedStyle(() => ({
+    opacity: v.get(),
+    transform: [{ translateY: (1 - v.get()) * 44 }],
+  }));
+  return <Animated.View style={[{ alignSelf: center ? 'center' : 'stretch', alignItems: center ? 'center' : 'flex-start' }, style]}>{children}</Animated.View>;
+}
+
 /* ------------------------------- building blocks ------------------------------- */
 
-function Eyebrow({ s, color, children }: { s: Sizes; color: string; children: ReactNode }) {
-  return <Text style={{ fontFamily: APPLE, color, fontSize: s.label * 1.1, fontWeight: '600', letterSpacing: 0.2 }}>{children}</Text>;
-}
+const Eyebrow = ({ s, children }: { s: Sizes; children: ReactNode }) => (
+  <Text style={{ fontFamily: APPLE, color: SOFT, fontSize: s.label * 1.1, fontWeight: '600', letterSpacing: 0.2 }}>{children}</Text>
+);
 
 function Head({ s, size, children, center }: { s: Sizes; size: 'giant' | 'title'; children: ReactNode; center?: boolean }) {
   const px = s[size];
@@ -99,44 +112,64 @@ function Lead({ s, children, center, max = 0.62 }: { s: Sizes; children: ReactNo
   );
 }
 
-/** A word in colour. */
-const Hi = ({ c, children }: { c: string; children: ReactNode }) => <Text style={{ color: c }}>{children}</Text>;
+/** Where a number came from. Quiet, but never small. */
+const Source = ({ s, children }: { s: Sizes; children: ReactNode }) => (
+  <Text style={{ fontFamily: APPLE, color: FAINT, fontSize: s.label, lineHeight: s.label * 1.4, fontWeight: '500', maxWidth: s.phone ? undefined : s.width * 0.7 }}>
+    Source: {children}
+  </Text>
+);
 
-function Offscript({ s, size }: { s: Sizes; size: number }) {
+/** A word in white (on grey text) or in the one accent. */
+const White = ({ children }: { children: ReactNode }) => <Text style={{ color: INK }}>{children}</Text>;
+const Blue = ({ children }: { children: ReactNode }) => <Text style={{ color: BLUE }}>{children}</Text>;
+
+function Offscript({ size }: { size: number }) {
   return (
     <Text style={{ fontFamily: APPLE, color: INK, fontSize: size, fontWeight: '500', letterSpacing: -size * 0.01 }}>
       A project by{' '}
-      <Text style={[OFFSCRIPT, { color: C.orange, fontSize: size * 1.25, letterSpacing: 0 }]}>Offscript</Text>
+      <Text style={[OFFSCRIPT, { color: OFFSCRIPT_ORANGE, fontSize: size * 1.25, letterSpacing: 0 }]}>Offscript</Text>
     </Text>
   );
 }
 
-function Panel({ children, s, accent }: { children: ReactNode; s: Sizes; accent?: string }) {
+function Panel({ children, s }: { children: ReactNode; s: Sizes }) {
   return (
-    <View
-      style={{
-        flex: s.phone ? undefined : 1,
-        borderRadius: 28,
-        padding: clamp(s.width * 0.02, 20, 36),
-        gap: 10,
-        backgroundColor: 'rgba(255,255,255,0.06)',
-        borderWidth: 1,
-        borderColor: accent ? `${accent}66` : 'rgba(255,255,255,0.1)',
-      }}>
+    <View style={{ flex: s.phone ? undefined : 1, borderRadius: 28, padding: clamp(s.width * 0.02, 20, 36), gap: 10, backgroundColor: '#1C1C1E' }}>
       {children}
     </View>
   );
 }
-
-const PanelTitle = ({ s, c, children }: { s: Sizes; c?: string; children: ReactNode }) => (
-  <Text style={{ fontFamily: APPLE, color: c ?? INK, fontSize: s.lead, fontWeight: '700', letterSpacing: -s.lead * 0.015 }}>{children}</Text>
+const PanelTitle = ({ s, children }: { s: Sizes; children: ReactNode }) => (
+  <Text style={{ fontFamily: APPLE, color: INK, fontSize: s.lead, fontWeight: '700', letterSpacing: -s.lead * 0.015 }}>{children}</Text>
 );
 const PanelText = ({ s, children }: { s: Sizes; children: ReactNode }) => (
   <Text style={{ fontFamily: APPLE, color: SOFT, fontSize: s.body, lineHeight: s.body * 1.4, fontWeight: '500' }}>{children}</Text>
 );
-
 function Row({ s, children }: { s: Sizes; children: ReactNode }) {
   return <View style={{ flexDirection: s.phone ? 'column' : 'row', gap: clamp(s.width * 0.012, 12, 24), alignSelf: 'stretch' }}>{children}</View>;
+}
+
+/** A big figure with what it means underneath. */
+function Figure({ s, value, children }: { s: Sizes; value: string; children: ReactNode }) {
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={{ fontFamily: APPLE, color: BLUE, fontSize: s.giant * 1.25, lineHeight: s.giant * 1.25, fontWeight: '700', letterSpacing: -s.giant * 0.04 }}>
+        {value}
+      </Text>
+      <Text
+        style={{
+          fontFamily: APPLE,
+          color: INK,
+          fontSize: s.lead * 1.1,
+          lineHeight: s.lead * 1.4,
+          fontWeight: '600',
+          letterSpacing: -s.lead * 0.012,
+          maxWidth: s.phone ? undefined : s.width * 0.6,
+        }}>
+        {children}
+      </Text>
+    </View>
+  );
 }
 
 /* ---------------------------------- slides ---------------------------------- */
@@ -144,323 +177,278 @@ function Row({ s, children }: { s: Sizes; children: ReactNode }) {
 interface Slide {
   id: string;
   chapter?: string;
-  accent: string;
   center?: boolean;
-  render: (s: Sizes) => ReactNode;
+  /** Each entry is one line that reveals in turn. */
+  lines: (s: Sizes) => ReactNode[];
 }
 
 const SLIDES: Slide[] = [
+  /* ---------- hook ---------- */
   {
-    id: 'cover',
-    accent: C.blue,
-    center: true,
-    render: (s) => (
-      <>
-        <Eyebrow s={s} color={C.blue}>
-          Fieldday · Riverside
-        </Eyebrow>
-        <Head s={s} size="giant" center>
-          Ground Control.
-        </Head>
-        <Lead s={s} center>
-          Every call heard. <Hi c={INK}>Every decision human.</Hi>
-        </Lead>
-        <Text style={{ fontFamily: APPLE, color: SOFT, fontSize: s.label, fontWeight: '600', marginTop: 12 }}>Track 3 · Crew and safety operations</Text>
-      </>
-    ),
+    id: 'hook',
+    chapter: '01 · Problem',
+    lines: (s) => [
+      <Head key="h" s={s} size="giant">
+        Imagine you’re Mo.
+      </Head>,
+      <Lead key="l" s={s}>
+        Safety lead at Riverside. Fifteen thousand people a day. Three hundred volunteers. One radio earpiece.
+      </Lead>,
+    ],
   },
   {
     id: 'moment',
-    chapter: '01 · The moment',
-    accent: C.orange,
-    render: (s) => (
-      <>
-        <Head s={s} size="giant">
-          Saturday. 2pm. <Hi c={C.orange}>38°C.</Hi>
-        </Head>
-        <Lead s={s}>A man collapses at the water station. The two first-aiders rostered there never turned up.</Lead>
-      </>
-    ),
+    chapter: '01 · Problem',
+    lines: (s) => [
+      <Head key="h" s={s} size="giant">
+        2pm. <Blue>38°C.</Blue>
+      </Head>,
+      <Lead key="l" s={s}>
+        A call crackles in: someone has collapsed at the water station. The two first-aiders rostered there never showed up.
+      </Lead>,
+    ],
   },
   {
-    id: 'problem',
-    chapter: '01 · The problem',
-    accent: C.pink,
-    render: (s) => (
-      <>
-        <Head s={s} size="title">
-          Radio calls <Hi c={C.pink}>disappear.</Hi>
-        </Head>
-        <Lead s={s}>
-          Reports come in short, noisy and full of jargon, and they’re gone once they’re said. Mo, the safety lead, is on foot with an earpiece and a
-          phone in a pocket.
-        </Lead>
-      </>
-    ),
+    id: 'gone',
+    chapter: '01 · Problem',
+    lines: (s) => [
+      <Head key="h" s={s} size="title">
+        Then the radio goes quiet.
+      </Head>,
+      <Lead key="l" s={s}>
+        The call lasted seconds and nobody wrote it down. <White>Who’s closest? Who’s trained? Has someone else already reported it?</White> Mo has
+        to work it out on foot.
+      </Lead>,
+    ],
+  },
+
+  /* ---------- evidence ---------- */
+  {
+    id: 'astroworld',
+    chapter: '02 · What the record shows',
+    lines: (s) => [
+      <Figure key="f" s={s} value="10">
+        people died at Astroworld in 2021. Texas’s task force named poor communication as a key factor.
+      </Figure>,
+      <Lead key="l" s={s}>
+        Firefighters outside weren’t on the same radio as the event’s medics. They were given phone numbers instead.
+      </Lead>,
+      <Source key="src" s={s}>
+        Texas Task Force on Concert Safety report, via KERA News (2022); Pollstar (2021).
+      </Source>,
+    ],
   },
   {
-    id: 'scale',
-    chapter: '01 · The problem',
-    accent: C.teal,
-    render: (s) => (
-      <>
-        <Head s={s} size="title">
-          Too much for one person to hold.
-        </Head>
-        <Row s={s}>
-          {[
-            ['300', 'volunteers across the site', C.teal],
-            ['15,000', 'people a day, for three days', C.blue],
-            ['1', 'safety lead: Mo', C.orange],
-          ].map(([n, label, color]) => (
-            <Panel key={n} s={s} accent={color}>
-              <Text style={{ fontFamily: APPLE, color, fontSize: s.title, fontWeight: '700', letterSpacing: -s.title * 0.03 }}>{n}</Text>
-              <PanelText s={s}>{label}</PanelText>
-            </Panel>
-          ))}
-        </Row>
-      </>
-    ),
+    id: 'manchester',
+    chapter: '02 · What the record shows',
+    lines: (s) => [
+      <Head key="h" s={s} size="title">
+        “Far below the standard it should have been.”
+      </Head>,
+      <Lead key="l" s={s}>
+        The Manchester Arena Inquiry on the emergency response in 2017. Better coordination and <White>communication</White> might have saved one,
+        possibly two lives.
+      </Lead>,
+      <Source key="src" s={s}>
+        Manchester Arena Inquiry, Volume 2 (2022).
+      </Source>,
+    ],
   },
+  {
+    id: 'demand',
+    chapter: '02 · What the record shows',
+    lines: (s) => [
+      <Figure key="f" s={s} value="12 in 1,000">
+        festival-goers needed medical help, in a seven-year study of one large festival. Hotter days brought more heat cases.
+      </Figure>,
+      <Lead key="l" s={s}>
+        At Riverside’s size, that rate would mean <White>around 180 people a day.</White>
+      </Lead>,
+      <Source key="src" s={s}>
+        Medical care at a mass gathering music festival, 2011–2017 (Wiener klinische Wochenschrift, 2021). Our estimate applies its median rate to
+        15,000 people.
+      </Source>,
+    ],
+  },
+
+  /* ---------- solution ---------- */
   {
     id: 'solution',
-    chapter: '02 · The solution',
-    accent: C.violet,
-    render: (s) => (
-      <>
-        <Head s={s} size="giant">
-          Ground Control.
-        </Head>
-        <Offscript s={s} size={s.lead * 1.15} />
-        <Lead s={s}>
-          Volunteers say what they see. <Hi c={C.violet}>AI writes it up</Hi> and finds the right person. <Hi c={INK}>Mo decides.</Hi> Help arrives,
-          already briefed.
-        </Lead>
-      </>
-    ),
+    chapter: '03 · Solution',
+    lines: (s) => [
+      <Head key="h" s={s} size="giant">
+        Ground Control.
+      </Head>,
+      <Offscript key="o" size={s.lead * 1.15} />,
+      <Lead key="l" s={s}>
+        Every call heard. <White>Every decision human.</White>
+      </Lead>,
+    ],
   },
   {
     id: 'how',
-    chapter: '02 · How it works',
-    accent: C.blue,
-    render: (s) => (
-      <>
-        <Head s={s} size="title">
-          Four steps from radio call to help.
-        </Head>
-        <Row s={s}>
-          {[
-            ['1', 'Speak', 'A volunteer just talks. No forms.', C.blue],
-            ['2', 'Structure', 'AI turns it into a clear report.', C.violet],
-            ['3', 'Approve', 'Mo sees who’s closest and taps once.', C.green],
-            ['4', 'Go', 'Their phone says where to go, out loud.', C.orange],
-          ].map(([n, t, d, color]) => (
-            <Panel key={n} s={s} accent={color}>
-              <Text style={{ fontFamily: APPLE, color, fontSize: s.lead * 1.3, fontWeight: '800' }}>{n}</Text>
-              <PanelTitle s={s}>{t}</PanelTitle>
-              <PanelText s={s}>{d}</PanelText>
-            </Panel>
-          ))}
-        </Row>
-      </>
-    ),
+    chapter: '03 · Solution',
+    lines: (s) => [
+      <Head key="h" s={s} size="title">
+        From radio call to help, in four steps.
+      </Head>,
+      <Row key="r" s={s}>
+        {[
+          ['Say it', 'A volunteer just talks. No forms.'],
+          ['AI writes it up', 'A clear report, checked for duplicates.'],
+          ['Mo approves', 'The nearest people with the right skills, one tap.'],
+          ['Help arrives', 'Their phone says where to go, out loud.'],
+        ].map(([t, d], i) => (
+          <Panel key={t} s={s}>
+            <Text style={{ fontFamily: APPLE, color: FAINT, fontSize: s.label * 1.1, fontWeight: '700' }}>{i + 1}</Text>
+            <PanelTitle s={s}>{t}</PanelTitle>
+            <PanelText s={s}>{d}</PanelText>
+          </Panel>
+        ))}
+      </Row>,
+    ],
   },
+
+  /* ---------- how it works ---------- */
   {
     id: 'ai',
-    chapter: '03 · Use of AI',
-    accent: C.violet,
-    render: (s) => (
-      <>
-        <Head s={s} size="title">
-          <Hi c={C.violet}>AI does the legwork.</Hi> People make the calls.
-        </Head>
-        <View style={{ gap: clamp(s.width * 0.01, 10, 18) }}>
-          {[
-            'Writes up voice reports in plain language',
-            'Suggests who to send, by distance and skill',
-            'Flags reports that may be the same incident',
-            'Briefs responders out loud, sized to their walk',
-            'Turns “more de-escalation at the Lawn Stage” into a plan',
-          ].map((line) => (
-            <View key={line} style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-              <Glyph name="sparkle" size={s.body * 1.2} color={C.violet} />
-              <Text style={{ fontFamily: APPLE, color: INK, fontSize: s.lead, fontWeight: '600', letterSpacing: -s.lead * 0.012, flexShrink: 1 }}>{line}</Text>
-            </View>
-          ))}
-        </View>
-      </>
-    ),
+    chapter: '04 · How it works',
+    lines: (s) => [
+      <Head key="h" s={s} size="title">
+        AI does the legwork. <Blue>People make the calls.</Blue>
+      </Head>,
+      <View key="list" style={{ gap: clamp(s.width * 0.01, 10, 18) }}>
+        {[
+          'Writes up voice reports in plain language',
+          'Suggests who to send, by distance and skill',
+          'Flags reports that may be the same incident',
+          'Briefs responders out loud, sized to their walk',
+          'Turns “more de-escalation at the Lawn Stage” into a plan',
+        ].map((line) => (
+          <View key={line} style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+            <Glyph name="check" size={s.body * 1.2} color={SOFT} strokeWidth={2.5} />
+            <Text style={{ fontFamily: APPLE, color: INK, fontSize: s.lead, fontWeight: '600', letterSpacing: -s.lead * 0.012, flexShrink: 1 }}>{line}</Text>
+          </View>
+        ))}
+      </View>,
+    ],
   },
   {
     id: 'control',
-    chapter: '03 · A person always decides',
-    accent: C.green,
-    render: (s) => (
-      <>
-        <Head s={s} size="title">
-          Nothing moves without <Hi c={C.green}>a name on it.</Hi>
-        </Head>
-        <Row s={s}>
-          <Panel s={s} accent={C.green}>
-            <PanelTitle s={s} c={C.green}>
-              Mo approves
-            </PanelTitle>
-            <PanelText s={s}>Every response, and every change to who stands where.</PanelText>
-          </Panel>
-          <Panel s={s} accent={C.blue}>
-            <PanelTitle s={s} c={C.blue}>
-              Leads step in
-            </PanelTitle>
-            <PanelText s={s}>Critical and no answer in 30 seconds? The zone’s lead can approve.</PanelText>
-          </Panel>
-          <Panel s={s} accent={C.orange}>
-            <PanelTitle s={s} c={C.orange}>
-              Everything logged
-            </PanelTitle>
-            <PanelText s={s}>Who decided, what was sent, and when.</PanelText>
-          </Panel>
-        </Row>
-      </>
-    ),
+    chapter: '04 · How it works',
+    lines: (s) => [
+      <Head key="h" s={s} size="title">
+        Nothing moves without a name on it.
+      </Head>,
+      <Row key="r" s={s}>
+        <Panel s={s}>
+          <PanelTitle s={s}>Mo approves</PanelTitle>
+          <PanelText s={s}>Every response, and every change to who stands where.</PanelText>
+        </Panel>
+        <Panel s={s}>
+          <PanelTitle s={s}>Leads step in</PanelTitle>
+          <PanelText s={s}>Critical and no answer in 30 seconds? The zone’s lead can approve.</PanelText>
+        </Panel>
+        <Panel s={s}>
+          <PanelTitle s={s}>Everything logged</PanelTitle>
+          <PanelText s={s}>Who decided, what was sent, and when.</PanelText>
+        </Panel>
+      </Row>,
+    ],
   },
   {
     id: 'brief',
-    chapter: '04 · Built for the moment',
-    accent: C.orange,
-    render: (s) => (
-      <>
-        <Head s={s} size="title">
-          A brief that <Hi c={C.orange}>fits the walk.</Hi>
-        </Head>
-        <View style={{ gap: 0, alignSelf: 'stretch', maxWidth: s.phone ? undefined : s.width * 0.75 }}>
-          {[
-            ['Under 100 m', 'One sentence.'],
-            ['100 to 300 m', 'Where to go and what to expect.'],
-            ['Over 300 m', 'The full picture, and who to find.'],
-          ].map(([d, what], i) => (
-            <View
-              key={d}
-              style={{
-                flexDirection: s.phone ? 'column' : 'row',
-                gap: s.phone ? 4 : 32,
-                paddingVertical: clamp(s.width * 0.012, 14, 22),
-                borderTopWidth: i ? 1 : 0,
-                borderColor: 'rgba(255,255,255,0.12)',
-              }}>
-              <Text style={{ fontFamily: APPLE, color: C.orange, fontSize: s.lead, fontWeight: '700', width: s.phone ? undefined : s.lead * 7.5 }}>{d}</Text>
-              <Text style={{ fontFamily: APPLE, color: INK, fontSize: s.lead, fontWeight: '500', flexShrink: 1 }}>{what}</Text>
-            </View>
-          ))}
-        </View>
-      </>
-    ),
+    chapter: '04 · How it works',
+    lines: (s) => [
+      <Head key="h" s={s} size="title">
+        A brief that fits the walk.
+      </Head>,
+      <View key="t" style={{ alignSelf: 'stretch', maxWidth: s.phone ? undefined : s.width * 0.75 }}>
+        {[
+          ['Under 100 m', 'One sentence.'],
+          ['100 to 300 m', 'Where to go and what to expect.'],
+          ['Over 300 m', 'The full picture, and who to find.'],
+        ].map(([d, what], i) => (
+          <View
+            key={d}
+            style={{
+              flexDirection: s.phone ? 'column' : 'row',
+              gap: s.phone ? 4 : 32,
+              paddingVertical: clamp(s.width * 0.012, 14, 22),
+              borderTopWidth: i ? 1 : 0,
+              borderColor: '#2C2C2E',
+            }}>
+            <Text style={{ fontFamily: APPLE, color: INK, fontSize: s.lead, fontWeight: '700', width: s.phone ? undefined : s.lead * 7.5 }}>{d}</Text>
+            <Text style={{ fontFamily: APPLE, color: SOFT, fontSize: s.lead, fontWeight: '500', flexShrink: 1 }}>{what}</Text>
+          </View>
+        ))}
+      </View>,
+    ],
   },
   {
     id: 'duplicates',
-    chapter: '04 · Built for the moment',
-    accent: C.pink,
-    render: (s) => (
-      <>
-        <Head s={s} size="title">
-          Two reports. <Hi c={C.pink}>One fight.</Hi> One response.
-        </Head>
-        <Lead s={s}>
-          Reports that sound alike, close in time and place, are linked. Mo compares them side by side before anyone is sent, so no fight gets two teams.
-        </Lead>
-      </>
-    ),
+    chapter: '04 · How it works',
+    lines: (s) => [
+      <Head key="h" s={s} size="title">
+        Two reports. One fight. <Blue>One response.</Blue>
+      </Head>,
+      <Lead key="l" s={s}>
+        Reports that sound alike, close in time and place, are linked. Mo compares them side by side before anyone is sent.
+      </Lead>,
+    ],
   },
   {
     id: 'staffing',
-    chapter: '04 · Built for the moment',
-    accent: C.teal,
-    render: (s) => (
-      <>
-        <Head s={s} size="title">
-          Move <Hi c={C.teal}>skills</Hi>, not just people.
-        </Head>
-        <Lead s={s}>
-          Concert at the Lawn Stage? One tap asks for more de-escalation there. Or just say it. Mo approves who moves, and no zone is left short.
-        </Lead>
-      </>
-    ),
-  },
-  {
-    id: 'design',
-    chapter: '04 · Built for the moment',
-    accent: C.blue,
-    render: (s) => (
-      <>
-        <Head s={s} size="title">
-          Big type. One tap. <Hi c={C.blue}>Readable in the sun.</Hi>
-        </Head>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
-          {[
-            ['Nothing under 17 pt', C.blue],
-            ['Royal blue for actions', C.blue],
-            ['Violet means AI wrote it', C.violet],
-            ['Liquid Glass on iPhone', C.teal],
-            ['Guided demo built in', C.orange],
-          ].map(([label, color]) => (
-            <View key={label} style={{ borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12, backgroundColor: `${color}26`, borderWidth: 1, borderColor: `${color}80` }}>
-              <Text style={{ fontFamily: APPLE, color: INK, fontSize: s.body, fontWeight: '600' }}>{label}</Text>
-            </View>
-          ))}
-        </View>
-      </>
-    ),
+    chapter: '04 · How it works',
+    lines: (s) => [
+      <Head key="h" s={s} size="title">
+        Move skills, not just people.
+      </Head>,
+      <Lead key="l" s={s}>
+        Concert at the Lawn Stage? One tap asks for more de-escalation there. Or just say it. <White>Mo approves who moves,</White> and no zone is
+        left short.
+      </Lead>,
+    ],
   },
   {
     id: 'leftout',
-    chapter: '05 · What we left out',
-    accent: C.teal,
-    render: (s) => (
-      <>
-        <Head s={s} size="title">
-          What we left out, <Hi c={C.teal}>on purpose.</Hi>
-        </Head>
-        <Row s={s}>
-          {[
-            ['A chatbot', 'Mo needs decisions, not a conversation.'],
-            ['Auto-dispatch', 'AI never sends anyone on its own.'],
-            ['Freehand zones', 'Preset zones Mo can adjust are faster on the day.'],
-          ].map(([t, why]) => (
-            <Panel key={t} s={s}>
-              <PanelTitle s={s}>{t}</PanelTitle>
-              <PanelText s={s}>{why}</PanelText>
-            </Panel>
-          ))}
-        </Row>
-      </>
-    ),
+    chapter: '05 · Choices',
+    lines: (s) => [
+      <Head key="h" s={s} size="title">
+        What we left out, on purpose.
+      </Head>,
+      <Row key="r" s={s}>
+        {[
+          ['A chatbot', 'Mo needs decisions, not a conversation.'],
+          ['Auto-dispatch', 'AI never sends anyone on its own.'],
+          ['Freehand zones', 'Preset zones Mo can adjust are faster on the day.'],
+        ].map(([t, why]) => (
+          <Panel key={t} s={s}>
+            <PanelTitle s={s}>{t}</PanelTitle>
+            <PanelText s={s}>{why}</PanelText>
+          </Panel>
+        ))}
+      </Row>,
+    ],
   },
   {
     id: 'close',
-    accent: C.violet,
     center: true,
-    render: (s) => (
-      <>
-        <Head s={s} size="giant" center>
-          Ground Control.
-        </Head>
-        <Lead s={s} center>
-          Every call heard. <Hi c={INK}>Every decision human.</Hi>
-        </Lead>
-        <Offscript s={s} size={s.lead * 1.1} />
-        <Pressable
-          onPress={() => router.push('/')}
-          style={({ pressed }) => ({
-            marginTop: 16,
-            borderRadius: 999,
-            paddingHorizontal: 32,
-            paddingVertical: 16,
-            backgroundColor: C.blue,
-            opacity: pressed ? 0.85 : 1,
-          })}>
-          <Text style={{ fontFamily: APPLE, color: '#FFFFFF', fontSize: s.body, fontWeight: '700' }}>Open the app</Text>
-        </Pressable>
-      </>
-    ),
+    lines: (s) => [
+      <Head key="h" s={s} size="giant" center>
+        Ground Control.
+      </Head>,
+      <Lead key="l" s={s} center>
+        Every call heard. <White>Every decision human.</White>
+      </Lead>,
+      <Offscript key="o" size={s.lead * 1.1} />,
+      <Pressable
+        key="b"
+        onPress={() => router.push('/')}
+        style={({ pressed }) => ({ marginTop: 16, borderRadius: 999, paddingHorizontal: 32, paddingVertical: 16, backgroundColor: BLUE, opacity: pressed ? 0.85 : 1 })}>
+        <Text style={{ fontFamily: APPLE, color: '#FFFFFF', fontSize: s.body, fontWeight: '700' }}>Open the app</Text>
+      </Pressable>,
+    ],
   },
 ];
 
@@ -468,20 +456,34 @@ const SLIDES: Slide[] = [
 
 export default function Pitch() {
   const s = useSizes();
-  const [i, setI] = useState(() => {
+  const [shown, setShown] = useState(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return 0;
     const n = parseInt(window.location.hash.slice(1), 10);
     return Number.isFinite(n) ? clamp(n - 1, 0, SLIDES.length - 1) : 0;
   });
-  const slide = SLIDES[i];
+  const slide = SLIDES[shown];
+  const busy = useSharedValue(false);
 
-  const go = (next: number) => setI(clamp(next, 0, SLIDES.length - 1));
+  // Leaving: the whole slide fades and drifts up, then the next one's lines rise in.
+  const out = useSharedValue(1);
+  const leaving = useAnimatedStyle(() => ({ opacity: out.get(), transform: [{ translateY: (out.get() - 1) * 30 }] }));
+
+  const go = (delta: number) => {
+    const next = clamp(shown + delta, 0, SLIDES.length - 1);
+    if (next === shown || busy.get()) return;
+    busy.set(true);
+    out.set(withTiming(0, { duration: 320, easing: Easing.in(Easing.quad) }));
+    setTimeout(() => {
+      setShown(next);
+      out.set(1);
+      busy.set(false);
+    }, 330);
+  };
 
   // Keep the address in step (/pitch#3) and load Offscript's face on the web.
   useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    window.history.replaceState(null, '', `#${i + 1}`);
-  }, [i]);
+    if (Platform.OS === 'web') window.history.replaceState(null, '', `#${shown + 1}`);
+  }, [shown]);
   useEffect(() => {
     if (Platform.OS !== 'web' || document.getElementById('offscript-face')) return;
     const link = document.createElement('link');
@@ -492,110 +494,68 @@ export default function Pitch() {
   }, []);
 
   // Arrow keys, space and page keys, like a keynote.
+  const goRef = useRef(go);
+  useEffect(() => {
+    goRef.current = go;
+  });
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const onKey = (e: KeyboardEvent) => {
       if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'].includes(e.key)) {
         e.preventDefault();
-        setI((n) => clamp(n + 1, 0, SLIDES.length - 1));
+        goRef.current(1);
       } else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(e.key)) {
         e.preventDefault();
-        setI((n) => clamp(n - 1, 0, SLIDES.length - 1));
-      } else if (e.key === 'Home') setI(0);
-      else if (e.key === 'End') setI(SLIDES.length - 1);
+        goRef.current(-1);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Each slide fades in and settles a few pixels up.
-  const t = useSharedValue(1);
-  useEffect(() => {
-    t.set(0);
-    t.set(withTiming(1, { duration: 650, easing: EASE_OUT }));
-  }, [i, t]);
-  const enter = useAnimatedStyle(() => ({ opacity: t.get(), transform: [{ translateY: (1 - t.get()) * 18 }] }));
-
   const swipe = Gesture.Pan()
     .runOnJS(true)
     .activeOffsetX([-30, 30])
     .onEnd((e) => {
-      if (e.translationX < -60) go(i + 1);
-      else if (e.translationX > 60) go(i - 1);
+      if (e.translationX < -60) go(1);
+      else if (e.translationX > 60) go(-1);
     });
+  const tap = Gesture.Tap()
+    .runOnJS(true)
+    .enabled(slide.id !== 'close')
+    .onEnd((e) => go(e.x < s.width * 0.3 ? -1 : 1));
+
+  const lines = [...(slide.chapter ? [<Eyebrow key="eyebrow" s={s}>{slide.chapter}</Eyebrow>] : []), ...slide.lines(s)];
 
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
-      <GestureDetector gesture={swipe}>
+      <GestureDetector gesture={Gesture.Race(swipe, tap)}>
         <Animated.View
           style={[
             {
               flex: 1,
               paddingHorizontal: s.pad,
-              paddingTop: s.pad * 0.8,
-              paddingBottom: s.pad * 0.8 + 56,
+              paddingVertical: s.pad * 0.8,
               justifyContent: 'center',
               alignItems: slide.center ? 'center' : 'flex-start',
               gap: clamp(s.width * 0.02, 18, 40),
             },
-            enter,
+            leaving,
           ]}>
-          {slide.chapter && (
-            <Eyebrow s={s} color={slide.accent}>
-              {slide.chapter}
-            </Eyebrow>
-          )}
-          {slide.render(s)}
+          {lines.map((line, i) => (
+            <Reveal key={`${slide.id}-${i}`} order={i} center={slide.center}>
+              {line}
+            </Reveal>
+          ))}
         </Animated.View>
       </GestureDetector>
-
-      {/* Footer: progress, count and arrows. Outside the swipe area so clicks go straight to them. */}
-      <View pointerEvents="box-none" style={[styles.footer, { paddingHorizontal: s.pad }]}>
-        <Text style={{ fontFamily: APPLE, color: SOFT, fontSize: s.label, fontWeight: '600' }}>Ground Control</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <Text style={{ fontFamily: APPLE, color: SOFT, fontSize: s.label, fontWeight: '600', fontVariant: ['tabular-nums'] }}>
-            {String(i + 1).padStart(2, '0')} / {String(SLIDES.length).padStart(2, '0')}
-          </Text>
-          <Arrow dir="back" disabled={i === 0} onPress={() => go(i - 1)} />
-          <Arrow dir="chevron" disabled={i === SLIDES.length - 1} onPress={() => go(i + 1)} />
-        </View>
-      </View>
       <View style={styles.track}>
-        <View style={{ height: 4, width: `${((i + 1) / SLIDES.length) * 100}%`, backgroundColor: slide.accent, borderRadius: 2 }} />
+        <View style={{ height: 3, width: `${((shown + 1) / SLIDES.length) * 100}%`, backgroundColor: INK, opacity: 0.7 }} />
       </View>
     </View>
   );
 }
 
-function Arrow({ dir, disabled, onPress }: { dir: 'back' | 'chevron'; disabled: boolean; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityLabel={dir === 'back' ? 'Previous slide' : 'Next slide'}
-      style={({ pressed }) => [styles.arrow, { opacity: disabled ? 0.3 : pressed ? 0.7 : 1 }]}>
-      <Glyph name={dir} size={22} color={INK} />
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
-  footer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  arrow: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  track: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 4, backgroundColor: 'rgba(255,255,255,0.08)' },
+  track: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 3, backgroundColor: '#1C1C1E' },
 });
