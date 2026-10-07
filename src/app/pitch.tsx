@@ -1,8 +1,8 @@
 /**
  * The pitch: problem, evidence, solution, live demo, close.
  *
- * Ground Control's own look: Apple's system type, muted solid colour slides
- * (ink, ember, dark plum, dark blue) between off-white and near-black ones, 3D
+ * Ground Control's own look: Apple's system type, all-dark slides tinted by
+ * chapter (warm through the problem, plum for the solution, blue for the demo), 3D
  * extruded titles, cards that each enter their own way, a radio transcript that types itself and cuts out, and a
  * tilted 3D festival map with a responder walking to an incident.
  *
@@ -32,7 +32,11 @@ import { Glyph } from '@/components/ui/glyph';
 
 /* ----------------------------- look and type ----------------------------- */
 
-type Theme = 'light' | 'dark' | 'ink' | 'ember' | 'plum' | 'midnight';
+// Every slide is dark and follows the story's temperature: calm ink to open,
+// warm through the problem (ember and char in turn), cooling through the
+// solution (plum, dusk) to blue for the demo, and back to ink to close.
+
+type Theme = 'light' | 'dark' | 'ink' | 'ember' | 'char' | 'plum' | 'dusk' | 'midnight';
 
 interface Colors {
   bg: string;
@@ -52,7 +56,9 @@ const PALETTE: Record<Theme, Colors> = {
   dark: { bg: '#0B0B0C', ink: '#F2F1EE', grey: '#8E8C87', muted: '#A9A7A1', accent: '#9AA6D6', fill: '#1B1B1D', depth: '#2E3A66', offscript: '#E0A458' },
   ink: { bg: '#0C0F16', ink: '#F4F1EA', grey: '#9AA0AD', muted: '#C8CCD4', accent: '#9AA6D6', fill: 'rgba(244,241,234,0.08)', depth: '#2B3870', offscript: '#E3C27A' },
   ember: { bg: '#1C120D', ink: '#F2E9E1', grey: '#A8958A', muted: '#D6C6BA', accent: '#E0A458', fill: 'rgba(242,233,225,0.08)', depth: '#5A3418', offscript: '#E0A458' },
+  char: { bg: '#160E0B', ink: '#F2E9E1', grey: '#A8958A', muted: '#D6C6BA', accent: '#E0A458', fill: '#241914', depth: '#4A2C18', offscript: '#E0A458' },
   plum: { bg: '#0E0816', ink: '#F4F1EA', grey: '#BDB2D2', muted: '#DED7E9', accent: '#C9B6F2', fill: 'rgba(244,241,234,0.1)', depth: '#2A1B3F', offscript: '#E3C27A' },
+  dusk: { bg: '#0E0A14', ink: '#F4F1EA', grey: '#B3AAC4', muted: '#DAD3E6', accent: '#C9B6F2', fill: '#1C1626', depth: '#2A1B3F', offscript: '#E3C27A' },
   midnight: { bg: '#0A1328', ink: '#F4F1EA', grey: '#B3BDD6', muted: '#DAE0EC', accent: '#F4F1EA', fill: 'rgba(244,241,234,0.1)', depth: '#030812', offscript: '#E3C27A' },
 };
 
@@ -91,6 +97,12 @@ type Sizes = ReturnType<typeof useSizes>;
 
 const ThemeCtx = createContext<Colors>(PALETTE.light);
 const useColors = () => useContext(ThemeCtx);
+
+/** A big number that counts up, in the slide's accent. */
+function Stat({ to, delay, px }: { to: number; delay: number; px: number }) {
+  const c = useColors();
+  return <CountUp to={to} delay={delay} style={t(px, '800', c.accent)} />;
+}
 
 const t = (px: number, weight: TextStyle['fontWeight'], color: string, extra?: TextStyle): TextStyle => ({
   fontFamily: APPLE,
@@ -563,7 +575,7 @@ const SLIDES: Slide[] = [
     ],
   },
   {
-    theme: 'dark',
+    theme: 'char',
     notes: 'This is how it reaches Mo: a few seconds of radio, through static, and then it’s gone. Who’s closest? Who’s trained? Did anyone else call it in?',
     lines: (s) => [
       <Muted key="m" s={s}>
@@ -577,14 +589,14 @@ const SLIDES: Slide[] = [
     ],
   },
   {
-    theme: 'light',
+    theme: 'ember',
     notes:
       'This isn’t hypothetical. Ten people died at Astroworld in 2021. Texas’s concert safety task force named poor communication as a key factor: firefighters outside weren’t on the same radio as the event’s medics.',
     lines: (s) => [
       <Big key="h" s={s} size="h2" max={0.8}>
         When the radio fails, <Grey>people get hurt.</Grey>
       </Big>,
-      <CountUp key="n" to={10} delay={600} style={t(clamp(s.width * 0.13, 72, 200), '800', PALETTE.light.accent)} />,
+      <Stat key="n" to={10} delay={600} px={clamp(s.width * 0.13, 72, 200)} />,
       <Big key="d" s={s} size="sub" max={0.62}>
         people died at Astroworld in 2021. Medics and firefighters weren’t on the same radio.
       </Big>,
@@ -594,7 +606,7 @@ const SLIDES: Slide[] = [
     ],
   },
   {
-    theme: 'dark',
+    theme: 'char',
     notes:
       'The Manchester Arena Inquiry said the emergency response was far below the standard it should have been, and that better coordination and communication might have saved one, possibly two lives.',
     lines: (s) => [
@@ -610,14 +622,14 @@ const SLIDES: Slide[] = [
     ],
   },
   {
-    theme: 'light',
+    theme: 'ember',
     notes:
       'And the load is real. A seven-year study of a large music festival found about 12 in every 1,000 people needed medical help, more on hot days. At Riverside’s size, that’s around 180 people a day, all coming in over the radio.',
     lines: (s) => [
       <Big key="h" s={s} size="h2" max={0.8}>
         Every day at Riverside, <Grey>around</Grey>
       </Big>,
-      <CountUp key="n" to={180} delay={500} style={t(clamp(s.width * 0.15, 80, 220), '800', PALETTE.light.accent)} />,
+      <Stat key="n" to={180} delay={500} px={clamp(s.width * 0.15, 80, 220)} />,
       <Big key="s" s={s} size="sub">
         people could need medical help.
       </Big>,
@@ -649,7 +661,7 @@ const SLIDES: Slide[] = [
     aside: (s) => <IsoMap s={s} />,
   },
   {
-    theme: 'light',
+    theme: 'dusk',
     notes:
       'Four steps. A volunteer just says what they see. AI writes it up as a clear incident and checks whether someone already reported it. Mo sees the nearest people with the right skills and approves in one tap. Their phone tells them where to go, out loud, while they walk.',
     raw: [1],
@@ -672,7 +684,7 @@ const SLIDES: Slide[] = [
     ],
   },
   {
-    theme: 'dark',
+    theme: 'dusk',
     notes:
       'The AI does the legwork, but it never acts alone. Mo approves every response and every move. If a critical report gets no answer in 30 seconds, the zone’s location lead can step in, and Mo is told. Every decision is logged with a name.',
     raw: [1],
@@ -719,7 +731,7 @@ const SLIDES: Slide[] = [
     ],
   },
   {
-    theme: 'light',
+    theme: 'ink',
     notes:
       'What we left out, on purpose. No chatbot: Mo needs decisions, not a conversation. No auto-dispatch: AI never sends anyone on its own. No freehand zone drawing: preset zones Mo can adjust are faster on the day.',
     raw: [1],
@@ -741,7 +753,7 @@ const SLIDES: Slide[] = [
     ],
   },
   {
-    theme: 'dark',
+    theme: 'ink',
     center: true,
     notes: 'Every call heard. Every decision human. That’s Ground Control. Thank you.',
     lines: (s) => [
