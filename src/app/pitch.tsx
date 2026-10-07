@@ -1,8 +1,8 @@
 /**
  * The pitch: problem, evidence, solution, live demo, close.
  *
- * Ground Control's own look: Apple's system type, bold solid colour slides
- * (sun yellow, royal blue, broadcast red) between white and black ones, 3D
+ * Ground Control's own look: Apple's system type, muted solid colour slides
+ * (sand, dusty navy, brick) between off-white and near-black ones, 3D
  * extruded titles, a radio transcript that types itself and cuts out, and a
  * tilted 3D festival map with a responder walking to an incident.
  *
@@ -31,7 +31,7 @@ import { Glyph } from '@/components/ui/glyph';
 
 /* ----------------------------- look and type ----------------------------- */
 
-type Theme = 'light' | 'dark' | 'yellow' | 'blue' | 'red';
+type Theme = 'light' | 'dark' | 'sand' | 'navy' | 'brick';
 
 interface Colors {
   bg: string;
@@ -47,11 +47,11 @@ interface Colors {
 }
 
 const PALETTE: Record<Theme, Colors> = {
-  light: { bg: '#FFFFFF', ink: '#1D1D1F', grey: '#86868B', muted: '#6E6E73', accent: '#2340D9', fill: '#F5F5F7', depth: '#C9D2FF', offscript: '#C2410C' },
-  dark: { bg: '#000000', ink: '#F5F5F7', grey: '#8E8E93', muted: '#A1A1A6', accent: '#5B78FF', fill: '#1C1C1E', depth: '#2340D9', offscript: '#FF9F0A' },
-  yellow: { bg: '#FFD60A', ink: '#1D1D1F', grey: '#5E4E00', muted: '#3D3300', accent: '#1D1D1F', fill: 'rgba(0,0,0,0.08)', depth: '#C9A500', offscript: '#1D1D1F' },
-  blue: { bg: '#2340D9', ink: '#FFFFFF', grey: '#C3CCFF', muted: '#E0E5FF', accent: '#FFD60A', fill: 'rgba(255,255,255,0.12)', depth: '#14248A', offscript: '#FFD60A' },
-  red: { bg: '#D7261E', ink: '#FFFFFF', grey: '#FFD3D0', muted: '#FFE7E5', accent: '#FFFFFF', fill: 'rgba(255,255,255,0.16)', depth: '#7E140F', offscript: '#FFD60A' },
+  light: { bg: '#FBFAF7', ink: '#1D1D1F', grey: '#8A8780', muted: '#6B6862', accent: '#3E4C8A', fill: '#F1EFEA', depth: '#DCDDE6', offscript: '#A4502A' },
+  dark: { bg: '#0B0B0C', ink: '#F2F1EE', grey: '#8E8C87', muted: '#A9A7A1', accent: '#9AA6D6', fill: '#1B1B1D', depth: '#2E3A66', offscript: '#E0A458' },
+  sand: { bg: '#D8C7A6', ink: '#1F1C17', grey: '#5E5240', muted: '#3F3729', accent: '#1F1C17', fill: 'rgba(31,28,23,0.08)', depth: '#B8A27C', offscript: '#1F1C17' },
+  navy: { bg: '#2E3A66', ink: '#F4F1EA', grey: '#B9BFD6', muted: '#DADCE6', accent: '#E3C27A', fill: 'rgba(244,241,234,0.1)', depth: '#1B2343', offscript: '#E3C27A' },
+  brick: { bg: '#8F3A32', ink: '#F7EFE8', grey: '#E8C9C2', muted: '#F2DDD7', accent: '#F7EFE8', fill: 'rgba(247,239,232,0.14)', depth: '#55211C', offscript: '#F2D49B' },
 };
 
 /** Apple's own typeface: San Francisco on Apple devices, the closest system face elsewhere. */
@@ -305,7 +305,7 @@ function RadioLog({ s, delay = 700 }: { s: Sizes; delay?: number }) {
         return (
           <View key={i} style={{ flexDirection: 'row', gap: 22, alignItems: 'baseline' }}>
             <Text style={{ fontFamily: MONO, fontSize: px, color: c.grey, fontWeight: '600' }}>{l.time}</Text>
-            <Text style={{ fontFamily: MONO, fontSize: px, lineHeight: px * 1.35, color: l.cut ? '#FF453A' : c.ink, fontWeight: '600', flexShrink: 1 }}>
+            <Text style={{ fontFamily: MONO, fontSize: px, lineHeight: px * 1.35, color: l.cut ? '#E07A6E' : c.ink, fontWeight: '600', flexShrink: 1 }}>
               {shown}
               {typing ? '▍' : ''}
             </Text>
@@ -356,14 +356,14 @@ function Bar({ i, h, liveMs }: { i: number; h: number; liveMs: number }) {
 /* ------------------------------ the 3D map ------------------------------ */
 
 const ZONES = [
-  { x: 6, y: 8, w: 30, h: 22, color: '#FFD60A' }, // stage
-  { x: 62, y: 6, w: 32, h: 26, color: '#FFD60A' }, // main stage
-  { x: 42, y: 44, w: 14, h: 12, color: '#64D2FF' }, // water
-  { x: 60, y: 46, w: 18, h: 18, color: '#FF9F0A' }, // food
-  { x: 10, y: 46, w: 16, h: 12, color: '#BF5AF2' }, // bar
-  { x: 12, y: 72, w: 20, h: 16, color: '#FF6482' }, // kids
-  { x: 38, y: 78, w: 10, h: 10, color: '#FF453A' }, // first aid
-  { x: 80, y: 74, w: 14, h: 18, color: '#30D158' }, // games
+  { x: 6, y: 8, w: 30, h: 22, color: '#D9B26F' }, // stage
+  { x: 62, y: 6, w: 32, h: 26, color: '#D9B26F' }, // main stage
+  { x: 42, y: 44, w: 14, h: 12, color: '#86A9B5' }, // water
+  { x: 60, y: 46, w: 18, h: 18, color: '#C4865A' }, // food
+  { x: 10, y: 46, w: 16, h: 12, color: '#9C8CB4' }, // bar
+  { x: 12, y: 72, w: 20, h: 16, color: '#C48D96' }, // kids
+  { x: 38, y: 78, w: 10, h: 10, color: '#B5574D' }, // first aid
+  { x: 80, y: 74, w: 14, h: 18, color: '#86A38C' }, // games
 ];
 const DOTS = Array.from({ length: 34 }, (_, i) => ({ x: 6 + ((i * 37) % 88), y: 8 + ((i * 53) % 84) }));
 const INCIDENT = { x: 49, y: 50 };
@@ -415,7 +415,7 @@ function IsoMap({ s }: { s: Sizes }) {
               height: `${z.h}%`,
               borderRadius: 8,
               backgroundColor: z.color,
-              shadowColor: '#0A1666',
+              shadowColor: '#141B33',
               shadowOpacity: 0.9,
               shadowRadius: 0,
               shadowOffset: { width: 6, height: 6 },
@@ -426,11 +426,11 @@ function IsoMap({ s }: { s: Sizes }) {
           <View key={i} style={{ position: 'absolute', left: `${d.x}%`, top: `${d.y}%`, width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFFFFF', opacity: 0.85 }} />
         ))}
         <View style={{ position: 'absolute', left: `${INCIDENT.x}%`, top: `${INCIDENT.y}%`, width: 0, height: 0 }}>
-          <Animated.View style={[{ position: 'absolute', left: -22, top: -22, width: 44, height: 44, borderRadius: 22, borderWidth: 3, borderColor: '#FF453A' }, ring]} />
-          <View style={{ position: 'absolute', left: -11, top: -11, width: 22, height: 22, borderRadius: 11, backgroundColor: '#FF453A', borderWidth: 3, borderColor: '#FFFFFF' }} />
+          <Animated.View style={[{ position: 'absolute', left: -22, top: -22, width: 44, height: 44, borderRadius: 22, borderWidth: 3, borderColor: '#E07A6E' }, ring]} />
+          <View style={{ position: 'absolute', left: -11, top: -11, width: 22, height: 22, borderRadius: 11, backgroundColor: '#E07A6E', borderWidth: 3, borderColor: '#F4F1EA' }} />
         </View>
         <Animated.View style={[{ position: 'absolute', width: 0, height: 0 }, responder]}>
-          <View style={{ position: 'absolute', left: -10, top: -10, width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFD60A', borderWidth: 3, borderColor: '#14248A' }} />
+          <View style={{ position: 'absolute', left: -10, top: -10, width: 20, height: 20, borderRadius: 10, backgroundColor: '#E3C27A', borderWidth: 3, borderColor: '#1B2343' }} />
         </Animated.View>
       </Animated.View>
     </View>
@@ -471,7 +471,7 @@ const SLIDES: Slide[] = [
     ],
   },
   {
-    theme: 'yellow',
+    theme: 'sand',
     notes: 'Saturday, 2pm, 38 degrees. The queue at the water station is 40 deep. Someone collapses, and the two first-aiders rostered there never showed up.',
     lines: (s) => [
       <Big key="t" s={s} size="sub">
@@ -553,7 +553,7 @@ const SLIDES: Slide[] = [
 
   /* ===== 02 Solution ===== */
   {
-    theme: 'blue',
+    theme: 'navy',
     turn: true,
     notes: 'So we built Ground Control. Every call heard, every decision human.',
     lines: (s) => [
@@ -617,7 +617,7 @@ const SLIDES: Slide[] = [
 
   /* ===== 03 Build ===== */
   {
-    theme: 'red',
+    theme: 'brick',
     turn: true,
     hasButton: true,
     notes:
