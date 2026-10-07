@@ -12,7 +12,10 @@ import { useTheme } from '@/hooks/use-theme';
 import { SCENARIOS, type ScenarioId, type ScenarioStep } from '@/sim/scenarios';
 import { DEMO_IDENTITIES } from '@/sim/seed/roster';
 import { runScriptedReport } from '@/state/pipeline';
+import { startTour } from '@/state/tour';
 import {
+  setAppearance,
+  type Appearance,
   formatClock,
   markStepDone,
   resetScenario,
@@ -45,6 +48,7 @@ export default function Demo() {
     mode: useStore((x) => x.mode),
     aiChaos: useStore((x) => x.aiChaos),
   };
+  const appearance = useStore((x) => x.appearance);
   const now = useSimNow(1000);
   const scenario = SCENARIOS[s.scenarioId];
   const [busy, setBusy] = useState<string | null>(null);
@@ -83,12 +87,24 @@ export default function Demo() {
   return (
     <Screen edges={['top', 'bottom']}>
       <Row style={{ justifyContent: 'space-between' }}>
-        <View>
-          <Txt variant="label" color={t.tint}>DEMO CONTROLS</Txt>
-          <Txt variant="title">Simulation</Txt>
-        </View>
+        <Txt variant="title">Demo</Txt>
         <Button title="Done" variant="secondary" size="sm" onPress={() => router.back()} />
       </Row>
+
+      <Section title="Guided stories">
+        <Card onPress={() => startTour('heat')}>
+          <Txt variant="heading">Heat collapse</Txt>
+          <Txt variant="caption">Two first-aiders don’t show. Someone collapses at the water station. Follow it from report to rescue.</Txt>
+        </Card>
+        <Card onPress={() => startTour('fight')}>
+          <Txt variant="heading">Same fight, reported twice</Txt>
+          <Txt variant="caption">Two volunteers report what might be one fight. See how Ground Control stops a double response.</Txt>
+        </Card>
+        <Card onPress={() => startTour('busy')}>
+          <Txt variant="heading">When Mo is busy</Txt>
+          <Txt variant="caption">A critical report and no answer from Mo. After 30 seconds the location lead can step in, and it’s logged.</Txt>
+        </Card>
+      </Section>
 
       {health && !health.ok && (
         <Banner tone="warn" title="AI server unreachable" body={`Tried ${apiBaseUrl()}. AI steps will use their fallbacks (manual form, rule-based flags, template briefs). Start it with "npm run server".`} />
@@ -97,7 +113,20 @@ export default function Demo() {
         <Banner tone="warn" title="AI server has no API key" body="Add ANTHROPIC_API_KEY to server/.env. Until then every AI step uses its fallback." />
       )}
 
-      <Section title="Scenario">
+      <Section title="Appearance">
+        <Segmented
+          value={appearance}
+          options={[
+            ['system', 'Phone'],
+            ['light', 'Light'],
+            ['dark', 'Dark'],
+          ]}
+          onChange={(v) => setAppearance(v as Appearance)}
+        />
+        <Txt variant="caption">“Phone” follows your phone’s light or dark setting.</Txt>
+      </Section>
+
+      <Section title="Free play">
         {(Object.keys(SCENARIOS) as ScenarioId[]).map((id) => {
           const sc = SCENARIOS[id];
           const active = id === s.scenarioId;
@@ -123,7 +152,7 @@ export default function Demo() {
         })}
       </Section>
 
-      <Section title={`Scripted events · ${scenario.title}`}>
+      <Section title={`Events · ${scenario.title}`}>
         {scenario.steps.map((step, i) => {
           const done = s.completedSteps[step.id];
           return (
@@ -162,7 +191,7 @@ export default function Demo() {
         })}
       </Section>
 
-      <Section title="Switch role">
+      <Section title="Be someone else">
         <View style={styles.grid}>
           {DEMO_IDENTITIES.map((id) => {
             const v = s.volunteers[id];
