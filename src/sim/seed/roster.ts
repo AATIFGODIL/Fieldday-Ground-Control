@@ -214,5 +214,14 @@ export function seedRoster(festival: Festival): SeedRoster {
     );
   }
 
+  // 4. De-escalation training, handed out in its own pass with its own random
+  //    stream, so everything above (and the demo stories built on it) stays put.
+  const rand2 = mulberry32(8086);
+  for (const v of volunteers) {
+    if (v.role === 'safety_lead') continue;
+    const likely = v.role === 'location_lead' || v.skills.includes('crowd_control') || v.skills.includes('security_licence');
+    if (rand2() < (likely ? 0.55 : 0.1)) v.skills = [...v.skills, 'deescalation'];
+  }
+
   return { volunteers, positions };
 }
