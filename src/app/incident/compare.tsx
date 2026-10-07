@@ -1,9 +1,10 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { Alert, View } from 'react-native';
 
-import { ReportSummary } from '@/components/incident/parts';
+import { firstName, ReportSummary } from '@/components/incident/parts';
 import { SiteMap } from '@/components/map/site-map';
-import { Banner, Button, Card, Pill, Row, Screen, Section, Txt } from '@/components/ui/primitives';
+import { Glyph } from '@/components/ui/glyph';
+import { Banner, Button, Card, Row, Screen, Txt, UrgencyPill } from '@/components/ui/primitives';
 import { Spacing } from '@/constants/theme';
 import { canResolveLinks } from '@/domain/escalation';
 import { centroid, dist } from '@/domain/geo';
@@ -11,7 +12,7 @@ import { useSimNow } from '@/hooks/use-sim-now';
 import { useTheme } from '@/hooks/use-theme';
 import { formatClock, resolveLink, useStore } from '@/state/store';
 
-/** Two possibly-related reports side by side, before any response is approved. */
+/** Two reports that might be one event. A person decides before anyone is sent. */
 export default function Compare() {
   const { link: linkId } = useLocalSearchParams<{ link: string }>();
   const t = useTheme();
@@ -19,13 +20,14 @@ export default function Compare() {
   const link = useStore((s) => s.links.find((l) => l.id === linkId));
   const a = useStore((s) => s.incidents.find((i) => i.id === link?.a));
   const b = useStore((s) => s.incidents.find((i) => i.id === link?.b));
+  const volunteers = useStore((s) => s.volunteers);
   const user = useStore((s) => (s.currentUserId ? s.volunteers[s.currentUserId] : undefined));
   if (!link || !a || !b || !user) return null;
 
   const allowed = canResolveLinks(user, a, now) || canResolveLinks(user, b, now);
   const resolve = (r: 'same' | 'separate') => {
     const err = resolveLink(link.id, r);
-    if (err) Alert.alert("Can't resolve", err);
+    if (err) Alert.alert('Can’t decide yet', err);
     else router.back();
   };
 
@@ -34,45 +36,50 @@ export default function Compare() {
 
   return (
     <Screen edges={[]}>
-      <Card style={{ borderColor: '#8E4EC6', borderWidth: 1.5 }}>
-        <Row style={{ justifyContent: 'space-between' }}>
-          <Txt variant="label" color="#8E4EC6">{link.source === 'ai' ? 'AI ASSESSMENT' : 'RULE-BASED MATCH'}</Txt>
-          {link.source === 'ai' && <Pill label={`${Math.round(link.confidence * 100)}% SAME`} color="#8E4EC6" solid />}
+      <View style={{ gap: Spacing.two }}>
+        <Txt variant="title">Same thing, or two?</Txt>
+        <Txt variant="body">
+          Two people reported something {minutes === 0 ? 'within a minute' : `${minutes} min apart`}, {metres} m from each other.
+        </Txt>
+      </View>
+
+      <Card tone="ai">
+        <Row>
+          <Glyph name="sparkle" size={18} color={t.ai} />
+          <Txt variant="label" color={t.ai}>
+            {link.source === 'ai' ? `AI thinks ${Math.round(link.confidence * 100)}% likely the same` : 'Flagged because they’re close in time and place'}
+          </Txt>
         </Row>
         <Txt variant="body">{link.reason}</Txt>
-        <Txt variant="caption">
-          Reported {minutes === 0 ? 'within a minute' : `${minutes} min`} apart, {metres} m apart.
-        </Txt>
       </Card>
 
       <SiteMap
         focus={{ center: centroid([a.location, b.location]), radius: Math.max(80, metres * 0.75) }}
-        height={200}
+        height={220}
         interactive={false}
         focusIncidentIds={[a.id, b.id]}
         highlightIds={[a.reporterId, b.reporterId]}
       />
 
-      <Row style={{ alignItems: 'flex-start', gap: Spacing.two }}>
-        {[a, b].map((inc) => (
-          <Card key={inc.id} style={{ flex: 1 }}>
-            <Txt variant="heading">{inc.ref}</Txt>
-            <Txt variant="caption">{formatClock(inc.createdAt)}</Txt>
-            <ReportSummary incident={inc} compact />
-          </Card>
-        ))}
-      </Row>
+      {[a, b].map((inc) => (
+        <Card key={inc.id}>
+          <Row style={{ justifyContent: 'space-between' }}>
+            <Txt variant="heading">{firstName(volunteers[inc.reporterId]?.name)} said</Txt>
+            <UrgencyPill urgency={inc.urgency} />
+          </Row>
+          <Txt variant="caption">{formatClock(inc.createdAt)}</Txt>
+          <ReportSummary incident={inc} compact />
+        </Card>
+      ))}
 
-      <Section title="Decision">
-        {!allowed && <Banner tone="info" title="Waiting for the safety lead" body="Only the safety lead can decide this until the escalation window opens." />}
-        <View style={{ gap: Spacing.two }}>
-          <Button title="Same incident — merge reports" disabled={!allowed} onPress={() => resolve('same')} />
-          <Button title="Separate incidents" variant="secondary" disabled={!allowed} onPress={() => resolve('separate')} />
-        </View>
-        <Txt variant="caption" color={t.textSecondary}>
-          Merging keeps the earlier report and folds the later one into it, so only one response is dispatched.
-        </Txt>
-      </Section>
+      {!allowed && <Banner tone="info" title="Waiting for Mo" body="Only the safety lead can decide this until the time window runs out." />}
+      <View style={{ gap: Spacing.two }}>
+        <Button title="Same thing · merge them" size="lg" disabled={!allowed} onPress={() => resolve('same')} />
+        <Button title="Two separate things" size="lg" variant="secondary" disabled={!allowed} onPress={() => resolve('separate')} />
+      </View>
+      <Txt variant="caption" center>
+        Merging keeps both reports but sends one response.
+      </Txt>
     </Screen>
   );
 }
