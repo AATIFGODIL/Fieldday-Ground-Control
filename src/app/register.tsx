@@ -58,7 +58,7 @@ export default function Register() {
     });
     signInAs(id);
     router.dismissAll();
-    router.replace('/volunteer/shift');
+    router.replace('/tools/shift');
   };
 
   return (

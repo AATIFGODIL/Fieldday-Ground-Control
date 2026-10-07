@@ -29,7 +29,7 @@ export default function Coverage() {
 
       {nowGaps.length > 0 ? (
         <Banner tone="danger" title={`${nowGaps.length} gap${nowGaps.length === 1 ? '' : 's'} right now`} body={nowGaps.map((g) => g.label).join('\n')}>
-          <Button title="Fix with placement" size="sm" style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => router.push('/safety/placement')} />
+          <Button title="Fix with placement" size="sm" style={{ alignSelf: 'flex-start', marginTop: 6 }} onPress={() => router.push('/tools/placement')} />
         </Banner>
       ) : (
         <Banner tone="ok" title="Fully covered right now" />
