@@ -35,7 +35,8 @@ export type GlyphName =
   | 'music'
   | 'glass'
   | 'sun'
-  | 'cloud';
+  | 'cloud'
+  | 'expand';
 
 const PATHS: Record<GlyphName, (c: string) => ReactNode> = {
   home: () => (
@@ -175,6 +176,7 @@ const PATHS: Record<GlyphName, (c: string) => ReactNode> = {
       <Path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" />
     </>
   ),
+  expand: () => <Path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />,
   edit: () => (
     <>
       <Path d="M12 20h9" />
