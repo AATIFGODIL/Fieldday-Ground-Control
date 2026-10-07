@@ -4,7 +4,9 @@
  * Actions are written as plain commands (submitIncident, approve, resolveLink…)
  * so they can later be moved behind a sync backend without touching screens.
  */
+import { Platform } from 'react-native';
 import { create } from 'zustand';
+import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
 
 import { compassDirection, isOnSite, pointInPolygon } from '@/domain/geo';
 import { canApprove, canResolveLinks } from '@/domain/escalation';
@@ -68,7 +70,13 @@ interface Clock {
   speed: number;
 }
 
+export type Appearance = 'system' | 'light' | 'dark';
+
 export interface State {
+  /** Has this device seen the intro? */
+  onboarded: boolean;
+  /** Follow the phone's light/dark setting, or force one (demo menu). */
+  appearance: Appearance;
   festivalId: string | null;
   currentUserId: string | null;
   festival: Festival;
@@ -107,7 +115,7 @@ const uid = (() => {
   return (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(n++).toString(36)}`;
 })();
 
-function initialState(scenarioId: ScenarioId): Omit<State, 'festivalId' | 'currentUserId' | 'mode' | 'aiChaos'> {
+function initialState(scenarioId: ScenarioId): Omit<State, 'onboarded' | 'appearance' | 'festivalId' | 'currentUserId' | 'mode' | 'aiChaos'> {
   const scenario = SCENARIOS[scenarioId];
   const festival = seedFestival();
   const { volunteers: list, positions } = seedRoster(festival);
@@ -145,13 +153,32 @@ function initialState(scenarioId: ScenarioId): Omit<State, 'festivalId' | 'curre
   };
 }
 
-export const useStore = create<State>()(() => ({
-  festivalId: null,
-  currentUserId: null,
-  mode: 'simulated',
-  aiChaos: 'off',
-  ...initialState('heat'),
-}));
+/** Web keeps the session across reloads; native keeps it for the app's lifetime. */
+const memory: Record<string, string> = {};
+const sessionStorage: StateStorage =
+  Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage
+    ? window.localStorage
+    : { getItem: (k) => memory[k] ?? null, setItem: (k, v) => void (memory[k] = v), removeItem: (k) => void delete memory[k] };
+
+export const useStore = create<State>()(
+  persist(
+    (): State => ({
+      onboarded: false,
+      appearance: 'system',
+      festivalId: null,
+      currentUserId: null,
+      mode: 'simulated',
+      aiChaos: 'off',
+      ...initialState('heat'),
+    }),
+    {
+      name: 'ground-control-session',
+      storage: createJSONStorage(() => sessionStorage),
+      // Only who you are survives a reload; the simulation itself starts fresh.
+      partialize: (s) => ({ onboarded: s.onboarded, appearance: s.appearance, festivalId: s.festivalId, currentUserId: s.currentUserId }),
+    },
+  ),
+);
 
 const get = useStore.getState;
 const set = useStore.setState;
@@ -230,6 +257,14 @@ export function joinFestival(code: string): boolean {
   if (code.trim().toUpperCase() !== FESTIVAL_ID) return false;
   set({ festivalId: FESTIVAL_ID });
   return true;
+}
+
+export function setAppearance(appearance: Appearance) {
+  set({ appearance });
+}
+
+export function finishOnboarding() {
+  set({ onboarded: true });
 }
 
 export function signInAs(userId: string) {
@@ -696,6 +731,10 @@ export function reopenIncident(incidentId: string) {
 export function resolveIncident(incidentId: string) {
   patchIncident(incidentId, { status: 'resolved' });
   audit('Marked resolved', { incidentId });
+}
+
+export function markNoticeRead(id: string) {
+  set({ notices: get().notices.map((n) => (n.id === id ? { ...n, read: true } : n)) });
 }
 
 export function markNoticesRead(userId: string) {
