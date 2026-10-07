@@ -51,7 +51,7 @@ const PALETTE: Record<Theme, Colors> = {
   dark: { bg: '#0B0B0C', ink: '#F2F1EE', grey: '#8E8C87', muted: '#A9A7A1', accent: '#9AA6D6', fill: '#1B1B1D', depth: '#2E3A66', offscript: '#E0A458' },
   sand: { bg: '#D8C7A6', ink: '#1F1C17', grey: '#5E5240', muted: '#3F3729', accent: '#1F1C17', fill: 'rgba(31,28,23,0.08)', depth: '#B8A27C', offscript: '#1F1C17' },
   plum: { bg: '#1A1127', ink: '#F4F1EA', grey: '#BDB2D2', muted: '#DED7E9', accent: '#E3C27A', fill: 'rgba(244,241,234,0.1)', depth: '#0C0713', offscript: '#E3C27A' },
-  midnight: { bg: '#15233F', ink: '#F4F1EA', grey: '#B6C0D8', muted: '#DCE1EC', accent: '#F4F1EA', fill: 'rgba(244,241,234,0.1)', depth: '#0A1226', offscript: '#E3C27A' },
+  midnight: { bg: '#0A1328', ink: '#F4F1EA', grey: '#B3BDD6', muted: '#DAE0EC', accent: '#F4F1EA', fill: 'rgba(244,241,234,0.1)', depth: '#030812', offscript: '#E3C27A' },
 };
 
 /** Apple's own typeface: San Francisco on Apple devices, the closest system face elsewhere. */
