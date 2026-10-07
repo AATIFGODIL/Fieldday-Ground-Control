@@ -262,3 +262,58 @@ describe('placement', () => {
     ).toBe(false);
   });
 });
+
+describe('staffing', () => {
+  const { planFill, resolveSurge, SURGES, targetFor, withTargets, onShiftIn, countWith } = jest.requireActual('../staffing') as typeof import('../staffing');
+  const roster = freshRoster();
+  const people = roster.volunteers;
+  const positionOf = (id: string) => roster.positions[id];
+  const lawn = () => festival.zones.find((z) => z.id === 'z-lawn')!;
+
+  it('hands out de-escalation training without disturbing the rest of the roster', () => {
+    expect(people.length).toBe(TOTAL_ROSTER);
+    expect(people.filter((v) => v.skills.includes('deescalation')).length).toBeGreaterThan(10);
+    expect(people.find((v) => v.id === 'v-sam')?.skills).toContain('first_aid');
+  });
+
+  it('a new target replaces the old rule for that skill', () => {
+    const next = withTargets(festival, [{ zoneId: 'z-lawn', skill: 'deescalation', min: 4 }]);
+    const z = next.zones.find((x) => x.id === 'z-lawn')!;
+    expect(targetFor(z, 'deescalation', 30)).toBe(4);
+    expect(targetFor(z, 'security_licence', 30)).toBe(targetFor(lawn(), 'security_licence', 30));
+  });
+
+  it('fills a raised target without leaving any other zone short', () => {
+    const surge = SURGES.find((s) => s.id === 'concert-lawn')!;
+    const next = withTargets(festival, resolveSurge(festival, surge, 30, people));
+    const { moves } = planFill({ festival: next, volunteers: people, positionOf, busyIds: new Set(), now: at(20), tempC: 30, zoneIds: ['z-lawn'] });
+    expect(moves.length).toBeGreaterThan(0);
+    expect(moves.every((m) => m.toZoneId === 'z-lawn' && m.fromZoneId !== 'z-lawn')).toBe(true);
+    // Apply the moves, then check every source zone still meets its own minimums.
+    const after = people.map((v) => {
+      const m = moves.find((x) => x.volunteerId === v.id);
+      return m ? { ...v, zoneId: m.toZoneId } : v;
+    });
+    for (const zoneId of new Set(moves.map((m) => m.fromZoneId!))) {
+      const zone = next.zones.find((z) => z.id === zoneId)!;
+      const here = onShiftIn(zoneId, after);
+      for (const r of zone.requirements.filter((x) => x.minTempC === undefined)) {
+        const before = countWith(onShiftIn(zoneId, people), r.skill);
+        // Never pushed below a minimum it was meeting before.
+        if (before >= r.min) expect(countWith(here, r.skill)).toBeGreaterThanOrEqual(r.min);
+      }
+    }
+  });
+
+  it('never moves someone on a call-out or moved in the last half hour', () => {
+    const next = withTargets(festival, [{ zoneId: 'z-lawn', skill: 'deescalation', min: 30 }]);
+    const busy = new Set(people.filter((v) => v.skills.includes('deescalation')).slice(0, 3).map((v) => v.id));
+    const recent = people.map((v, i) => (i % 2 === 0 ? { ...v, movedAt: at(20) - 5 * 60 * 1000 } : v));
+    const { moves, shortfalls } = planFill({ festival: next, volunteers: recent, positionOf, busyIds: busy, now: at(20), tempC: 30, zoneIds: ['z-lawn'] });
+    for (const m of moves) {
+      expect(busy.has(m.volunteerId)).toBe(false);
+      expect(recent.find((v) => v.id === m.volunteerId)?.movedAt).toBeUndefined();
+    }
+    expect(shortfalls.length).toBeGreaterThan(0);
+  });
+});
