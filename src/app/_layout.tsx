@@ -10,7 +10,6 @@ import { Colors } from '@/constants/theme';
 import { useApplyAppearance, useColorScheme } from '@/hooks/use-color-scheme';
 import { usePositionSources } from '@/positions/use-position-sources';
 import { initNotifications } from '@/services/notify';
-import { prepareVoice } from '@/services/speech';
 import { useDispatchTakeover } from '@/state/use-dispatch-takeover';
 
 // Expo Go can't do remote push; local notifications still work. Don't nag about it.
@@ -24,11 +23,6 @@ export default function RootLayout() {
   useApplyAppearance();
   usePositionSources();
   useDispatchTakeover();
-
-  // Wake the voice server as the app opens, so the first brief is ready in the Heart voice.
-  useEffect(() => {
-    prepareVoice('You’re needed.');
-  }, []);
 
   useEffect(() => {
     // OS notifications are a native feature; the web preview uses in-app banners only.

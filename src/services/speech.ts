@@ -15,6 +15,3 @@ export function speak(text: string, opts: { onDone?: () => void } = {}) {
 export function stopSpeaking() {
   Speech.stop();
 }
-
-/** The web version fetches the brief in Kokoro's voice ahead of time; phones use the system voice. */
-export function prepareVoice(_text: string) {}
