@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { ChangePreview, type PendingChange } from '@/components/staffing/change-preview';
 import { Glyph, type GlyphName } from '@/components/ui/glyph';
@@ -51,6 +51,12 @@ export default function Staff() {
   const [handledZone, setHandledZone] = useState<string | undefined>(undefined);
 
   const propose = (p: Omit<PendingChange, 'key'>) => setPending({ ...p, key: nextKey() });
+  // The change shows at the top of the screen, so glide up to it from wherever it was asked for.
+  const scroll = useRef<ScrollView>(null);
+  const show = (p: Omit<PendingChange, 'key'>) => {
+    propose(p);
+    scroll.current?.scrollTo({ y: 0, animated: true });
+  };
 
   // Arriving from "Find cover": open that zone and show who could fill it.
   if (params.zone && params.zone !== handledZone) {
@@ -67,7 +73,7 @@ export default function Staff() {
   const zones = [...festival.zones].sort((a, b) => shortBy(b) - shortBy(a));
 
   return (
-    <Screen tabs>
+    <Screen tabs scrollRef={scroll}>
       <Header eyebrow="Mo · Safety lead" title="Staff" subtitle="Where each skill is needed, and who can move. Nothing moves until you approve." />
 
       {pending && (
@@ -76,7 +82,7 @@ export default function Staff() {
         </Appear>
       )}
 
-      <AskBox onProposal={propose} busy={!!pending} />
+      <AskBox onProposal={show} busy={!!pending} />
 
       {surges.length > 0 && (
         <Section title="Running now">
@@ -105,7 +111,7 @@ export default function Staff() {
           {SURGES.map((p) => (
             <Pressable
               key={p.id}
-              onPress={() => propose({ title: p.title, note: p.note, source: 'preset', changes: resolveSurge(festival, p, temp, all) })}
+              onPress={() => show({ title: p.title, note: p.note, source: 'preset', changes: resolveSurge(festival, p, temp, all) })}
               style={({ pressed }) => [styles.surge, { backgroundColor: t.backgroundElement, opacity: pressed ? 0.85 : 1 }]}>
               <View style={[styles.tile, { backgroundColor: SURGE_TINT[p.glyph](t) }]}>
                 <Glyph name={p.glyph as GlyphName} size={22} color="#FFFFFF" />
@@ -119,7 +125,7 @@ export default function Staff() {
 
       <Section title="Zones">
         {zones.map((z) => (
-          <ZoneTargets key={z.id} zone={z} open={open === z.id} onToggle={() => setOpen(open === z.id ? null : z.id)} onProposal={propose} />
+          <ZoneTargets key={z.id} zone={z} open={open === z.id} onToggle={() => setOpen(open === z.id ? null : z.id)} onProposal={show} />
         ))}
       </Section>
     </Screen>

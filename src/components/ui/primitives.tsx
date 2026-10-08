@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -29,6 +29,7 @@ export function Screen({
   edges = ['top'],
   contentStyle,
   tabs = false,
+  scrollRef,
 }: {
   children: ReactNode;
   scroll?: boolean;
@@ -36,6 +37,8 @@ export function Screen({
   contentStyle?: StyleProp<ViewStyle>;
   /** Leave room for the floating tab bar. */
   tabs?: boolean;
+  /** For screens that need to scroll themselves (e.g. back to the top). */
+  scrollRef?: Ref<ScrollView>;
 }) {
   const t = useTheme();
   // Leave room to scroll everything clear of the pinned guide card.
@@ -45,6 +48,7 @@ export function Screen({
     <SafeAreaView edges={edges} style={{ flex: 1, backgroundColor: t.background }}>
       {scroll ? (
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={[styles.screenContent, { paddingBottom: bottom }, contentStyle]}
           contentInsetAdjustmentBehavior="automatic"
           keyboardShouldPersistTaps="handled">
