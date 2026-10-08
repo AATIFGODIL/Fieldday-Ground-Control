@@ -28,7 +28,7 @@ export function MapScreen({ canOperate }: { canOperate: boolean }) {
   const onShift = Object.values(volunteers).filter((v) => v.status === 'checked_in').length;
   const [operator, setOperator] = useState(params.operator === '1');
   const [selected, setSelected] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useState<{ id: string; text: string } | null>(null);
   const [zone, setZone] = useState<string | null>(null);
   const v = selected ? volunteers[selected] : undefined;
   const live = mode === 'live';
@@ -63,7 +63,7 @@ export function MapScreen({ canOperate }: { canOperate: boolean }) {
               onDotDropped={(id) => {
                 setSelected(id);
                 const to = dropDot(id);
-                setNote(to ? `${volunteers[id]?.name} moved to ${to}` : null);
+                setNote(to ? { id, text: `Moved to ${to}` } : null);
               }}
             />
             {/* The person you tapped shows on the map itself, not below it where you'd have to scroll. */}
@@ -92,6 +92,14 @@ export function MapScreen({ canOperate }: { canOperate: boolean }) {
                   <Txt variant="caption" numberOfLines={1}>
                     Speaks {v.languages.join(', ')}
                   </Txt>
+                  {note?.id === v.id && (
+                    <Row gap={Spacing.two}>
+                      <Glyph name="check" size={18} color={t.success} strokeWidth={3} />
+                      <Txt variant="label" color={t.success}>
+                        {note.text}
+                      </Txt>
+                    </Row>
+                  )}
                 </Card>
               </View>
             )}
@@ -119,7 +127,6 @@ export function MapScreen({ canOperate }: { canOperate: boolean }) {
                 <Txt variant="caption">Demo only. Drop someone in another zone to reassign them.</Txt>
               </View>
             </Row>
-            {note && <Txt variant="label" color={t.text}>{note}</Txt>}
           </Card>
         )}
 
