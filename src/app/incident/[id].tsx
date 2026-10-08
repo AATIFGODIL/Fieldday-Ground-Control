@@ -1,7 +1,7 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { CandidateLine, DispatchProgress, firstName, IncidentLog, PlanEditor, PlanView, ReportSummary, STATUS_LABEL } from '@/components/incident/parts';
@@ -35,6 +35,7 @@ export default function IncidentScreen() {
   const [draft, setDraft] = useState<{ base: ResponsePlan; plan: ResponsePlan } | null>(null);
   const [showLog, setShowLog] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const scroll = useRef<ScrollView>(null);
 
   useEffect(() => {
     if (!sentTo) return;
@@ -78,9 +79,22 @@ export default function IncidentScreen() {
   const secondsLeft = Math.max(0, Math.ceil((unlocksAt - now) / 1000));
   const leadWaiting = user.role === 'location_lead' && awaiting && secondsLeft > 0;
 
+  // The AI can flag a possible duplicate while you're down here at the Approve button,
+  // and that card appears at the top, out of sight. Point to it.
+  const dupHint = pending.length > 0 && (
+    <Pressable onPress={() => scroll.current?.scrollTo({ y: 0, animated: true })} accessibilityRole="button" hitSlop={6}>
+      <Row style={{ alignItems: 'flex-start' }}>
+        <Glyph name="link" size={20} color={t.ai} />
+        <Txt variant="label" color={t.ai} style={{ flex: 1 }}>
+          This might be the same as another report. Tap to see it at the top.
+        </Txt>
+      </Row>
+    </Pressable>
+  );
+
   return (
     <View style={{ flex: 1 }}>
-    <Screen edges={[]}>
+    <Screen edges={[]} scrollRef={scroll}>
       <Stack.Screen options={{ title: incident.ref }} />
 
       <View style={{ gap: Spacing.two }}>
@@ -217,6 +231,7 @@ export default function IncidentScreen() {
                 {edited && <Pill label="Edited" tone="accent" />}
               </Row>
               <PlanView plan={plan!} candidates={incident.candidates} onChange={(p) => setDraft({ base: incident.suggestion!, plan: p })} />
+              {dupHint}
               <Button
                 title={
                   check.allowed
@@ -241,6 +256,7 @@ export default function IncidentScreen() {
             </Appear>
           ) : (
             <Card tone="strong">
+              {dupHint}
               <PlanEditor
                 incident={incident}
                 initial={editing ? incident.suggestion : undefined}
