@@ -9,20 +9,25 @@
  * walking responders, the marching route line, "you are here") lives in light
  * overlay views so it can animate smoothly without redrawing 300 dots.
  */
-import { memo, useEffect, useState } from 'react';
-import { Platform, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { memo, useEffect, useRef, useState } from 'react';
+import { Platform, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  cancelAnimation,
   Easing,
   FadeIn,
   useAnimatedStyle,
   useSharedValue,
+  withDecay,
   withDelay,
   withRepeat,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import Svg, { Circle, G, Line, Polygon, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 
+import { EASE_OUT } from '@/constants/motion';
 import { Colors, urgencyColor } from '@/constants/theme';
 import { centroid, dist, pointInPolygon } from '@/domain/geo';
 import type { Skill, Vec, Volunteer, Zone, ZoneKind } from '@/domain/types';
@@ -31,6 +36,9 @@ import { moveDot, updateZone, useStore } from '@/state/store';
 
 /** Visible area in site metres: the park, the road to the north, the river to the south. */
 const VB = { x: -30, y: -60, w: 660, h: 545 };
+
+/** How far in you can zoom on the interactive map. */
+const MAX_ZOOM = 5;
 
 const LABEL_FONT = Platform.select({ web: '-apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif', default: undefined });
 
@@ -101,8 +109,13 @@ const ZONE_TINT: Record<ZoneKind, { light: [string, string]; dark: [string, stri
   gate: { light: ['#E2E6EC', '#4B5563'], dark: ['#21252B', '#9AA3B2'] },
 };
 
+/** A zone kind's colour on the map (for swatches elsewhere). */
+export function zoneColor(kind: ZoneKind, dark: boolean): string {
+  return ZONE_TINT[kind][dark ? 'dark' : 'light'][1];
+}
+
 /** Short names so labels stay big without colliding. */
-function mapName(z: Zone) {
+export function mapName(z: Zone) {
   return z.name
     .replace('Washrooms ', 'WC ')
     .replace(' Tent', '')
@@ -213,6 +226,8 @@ export interface SiteMapProps {
   onDotDropped?: (volunteerId: string) => void;
   onIncidentPress?: (incidentId: string) => void;
   showLabels?: boolean;
+  /** Zoom onto one zone and fade everything outside it (the Map tab's zone filter). */
+  filterZoneId?: string | null;
 }
 
 export function SiteMap({
@@ -230,6 +245,7 @@ export function SiteMap({
   onDotDropped,
   onIncidentPress,
   showLabels = true,
+  filterZoneId = null,
 }: SiteMapProps) {
   const scheme = useColorScheme();
   const dark = scheme === 'dark';
@@ -259,37 +275,204 @@ export function SiteMap({
   const ox = staticMap ? (W - cw) / 2 : 0;
   const oy = staticMap ? (H - ch) / 2 : 0;
 
-  // Pan/zoom transform on the content (origin top-left): screen = t + s * local.
-  const view = useSharedValue({ s: 1, tx: 0, ty: 0 });
-  const gestureStart = useSharedValue({ s: 1, tx: 0, ty: 0 });
+  // Pan/zoom transform on the content (origin top-left): screen = t + s × local.
+  // Pan, pinch and double-tap run on the UI thread, so the map stays with your
+  // fingers even while the simulation is re-rendering the dots.
+  const scale = useSharedValue(1);
+  const tx = useSharedValue(0);
+  const ty = useSharedValue(0);
+  const pinching = useSharedValue(false);
+  /** Where a one-finger pan took hold. `fresh` means take hold again (after a pinch). */
+  const grab = useSharedValue({ s: 1, x: 0, y: 0, ax: 0, ay: 0, fresh: true });
+  /** The view and focal point a pinch started from, its latest focal point, and the zoom last sent to React. */
+  const pinchFrom = useSharedValue({ s: 1, x: 0, y: 0, fx: 0, fy: 0, lx: 0, ly: 0, sent: 1 });
   const drag = useSharedValue<DragState | null>(null);
+  const surface = useRef<View>(null);
   const minS = Math.min(1, W / Math.max(cw, 1));
 
-  const clampView = (next: { s: number; tx: number; ty: number }) => {
-    const sc = Math.min(6, Math.max(minS, next.s));
-    const fit = (win: number, size: number, v: number) => (size * sc <= win ? (win - size * sc) / 2 : Math.min(0, Math.max(win - size * sc, v)));
-    return { s: sc, tx: fit(W, cw, next.tx), ty: fit(H, ch, next.ty) };
+  const clamp = (v: number, lo: number, hi: number) => {
+    'worklet';
+    return Math.min(hi, Math.max(lo, v));
   };
-  const apply = (next: { s: number; tx: number; ty: number }) => view.set(clampView(next));
+  /** Allowed translation at a scale: centred when the content is smaller than the window. */
+  const bounds = (sc: number) => {
+    'worklet';
+    const lo = (win: number, size: number) => (size * sc <= win ? (win - size * sc) / 2 : win - size * sc);
+    const hi = (win: number, size: number) => (size * sc <= win ? (win - size * sc) / 2 : 0);
+    return { xlo: lo(W, cw), xhi: hi(W, cw), ylo: lo(H, ch), yhi: hi(H, ch) };
+  };
+  /** Past an edge the map follows less and less (like iOS), then settles back when you let go. */
+  const rubber = (v: number, lo: number, hi: number, dim: number) => {
+    'worklet';
+    const band = (o: number) => (o * dim * 0.55) / (dim + 0.55 * o);
+    return v > hi ? hi + band(v - hi) : v < lo ? lo - band(lo - v) : v;
+  };
+  const softScale = (sc: number) => {
+    'worklet';
+    if (sc > MAX_ZOOM) return MAX_ZOOM * Math.pow(sc / MAX_ZOOM, 0.3);
+    if (sc < minS) return minS * Math.pow(sc / minS, 0.3);
+    return sc;
+  };
+  const stopMotion = () => {
+    'worklet';
+    cancelAnimation(scale);
+    cancelAnimation(tx);
+    cancelAnimation(ty);
+  };
+  /** Follow a gesture: edges stretch rather than stop dead. */
+  const follow = (sc: number, x: number, y: number) => {
+    'worklet';
+    const b = bounds(sc);
+    scale.set(sc);
+    tx.set(rubber(x, b.xlo, b.xhi, W));
+    ty.set(rubber(y, b.ylo, b.yhi, H));
+  };
+  /** Glide to a view, kept inside the edges. */
+  const settleTo = (sc: number, x: number, y: number, duration = 380) => {
+    'worklet';
+    const s2 = clamp(sc, minS, MAX_ZOOM);
+    const b = bounds(s2);
+    const cfg = { duration, easing: EASE_OUT };
+    scale.set(withTiming(s2, cfg));
+    tx.set(withTiming(clamp(x, b.xlo, b.xhi), cfg));
+    ty.set(withTiming(clamp(y, b.ylo, b.yhi), cfg));
+  };
+  /** Zoom to `sc`, keeping the window point (fx, fy) where it is. */
+  const zoomAbout = (sc: number, fx: number, fy: number, duration?: number) => {
+    'worklet';
+    const s2 = clamp(sc, minS, MAX_ZOOM);
+    const r = s2 / scale.get();
+    settleTo(s2, fx - (fx - tx.get()) * r, fy - (fy - ty.get()) * r, duration);
+  };
 
-  // Start centred on the park.
+  const panBegin = () => {
+    'worklet';
+    stopMotion();
+    grab.set({ s: scale.get(), x: tx.get(), y: ty.get(), ax: 0, ay: 0, fresh: false });
+  };
+  const panMove = (dx: number, dy: number) => {
+    'worklet';
+    // Two fingers down: the pinch is in charge. Take hold again wherever it leaves the map.
+    if (pinching.get()) {
+      grab.set({ ...grab.get(), fresh: true });
+      return;
+    }
+    let g = grab.get();
+    if (g.fresh) {
+      g = { s: scale.get(), x: tx.get(), y: ty.get(), ax: dx, ay: dy, fresh: false };
+      grab.set(g);
+    }
+    follow(g.s, g.x + dx - g.ax, g.y + dy - g.ay);
+  };
+  const panEnd = (vx: number, vy: number) => {
+    'worklet';
+    if (pinching.get()) return;
+    const b = bounds(scale.get());
+    // A flick carries on at the finger's speed and slows to a stop; past an edge it settles back.
+    const glide = (v: SharedValue<number>, speed: number, lo: number, hi: number) => {
+      const now = v.get();
+      if (hi > lo && now >= lo && now <= hi) v.set(withDecay({ velocity: speed, clamp: [lo, hi], rubberBandEffect: true, rubberBandFactor: 0.6 }));
+      else v.set(withTiming(clamp(now, lo, hi), { duration: 380, easing: EASE_OUT }));
+    };
+    glide(tx, vx, b.xlo, b.xhi);
+    glide(ty, vy, b.ylo, b.yhi);
+  };
+
+  /** Where the map sits with nothing filtered, or zoomed onto a zone. Content pixels, like the transform. */
+  const placement = (zoneId: string | null) => {
+    const zone = zoneId ? festival.zones.find((z) => z.id === zoneId) : undefined;
+    if (!zone || !W) return { s: 1, x: (W - cw) / 2, y: (H - ch) / 2 };
+    const xs = zone.polygon.map((p) => (p.x - vb.x) * ppm);
+    const ys = zone.polygon.map((p) => (p.y - vb.y) * ppm);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    // The zone fills a bit under half the window, so you still see what's around it.
+    const sc = clamp(Math.min(W / ((x1 - x0) * 2.4), H / ((y1 - y0) * 2.4)), minS, 4);
+    return { s: sc, x: W / 2 - ((x0 + x1) / 2) * sc, y: H / 2 - ((y0 + y1) / 2) * sc };
+  };
+
+  // Dots and labels are sized for the zoom, so React hears about zoom changes (now and then).
+  const [shownFilter, setShownFilter] = useState(filterZoneId);
+  if (filterZoneId !== shownFilter) {
+    setShownFilter(filterZoneId);
+    setZoom(placement(filterZoneId).s);
+  }
+
+  // Start centred on the park; glide to a zone when one is picked.
+  const placed = useRef(false);
   useEffect(() => {
     if (!W || staticMap) return;
-    view.set(clampView({ s: 1, tx: (W - cw) / 2, ty: (H - ch) / 2 }));
+    const to = placement(filterZoneId);
+    if (placed.current) {
+      settleTo(to.s, to.x, to.y, 560);
+      return;
+    }
+    placed.current = true;
+    const b = bounds(to.s);
+    scale.set(to.s);
+    tx.set(clamp(to.x, b.xlo, b.xhi));
+    ty.set(clamp(to.y, b.ylo, b.yhi));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [W, H, cw, ch, staticMap, filterZoneId]);
+
+  // In a browser: pinch on a trackpad (or ctrl/⌘ + scroll) zooms the map, not the page.
+  useEffect(() => {
+    const el = surface.current as unknown as HTMLElement | null;
+    if (Platform.OS !== 'web' || staticMap || !el) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const zoomBy = (k: number, clientX: number, clientY: number) => {
+      const r = el.getBoundingClientRect();
+      const css = r.width / (el.offsetWidth || r.width) || 1;
+      const fx = (clientX - r.left) / css;
+      const fy = (clientY - r.top) / css;
+      stopMotion();
+      const s0 = scale.get();
+      const s1 = clamp(s0 * k, minS, MAX_ZOOM);
+      const b = bounds(s1);
+      scale.set(s1);
+      tx.set(clamp(fx - (fx - tx.get()) * (s1 / s0), b.xlo, b.xhi));
+      ty.set(clamp(fy - (fy - ty.get()) * (s1 / s0), b.ylo, b.yhi));
+      clearTimeout(timer);
+      timer = setTimeout(() => setZoom(scale.get()), 140);
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return; // plain scrolling still scrolls the page
+      e.preventDefault();
+      zoomBy(Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.01)), e.clientX, e.clientY);
+    };
+    // Safari reports trackpad pinches as gesture events instead.
+    let last = 1;
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      last = 1;
+    };
+    const onGestureChange = (e: Event) => {
+      e.preventDefault();
+      const g = e as Event & { scale: number; clientX: number; clientY: number };
+      zoomBy(g.scale / last, g.clientX, g.clientY);
+      last = g.scale;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('gesturestart', onGestureStart);
+    el.addEventListener('gesturechange', onGestureChange);
+    return () => {
+      clearTimeout(timer);
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('gesturestart', onGestureStart);
+      el.removeEventListener('gesturechange', onGestureChange);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [W, H, cw, ch, staticMap]);
 
-  const animatedStyle = useAnimatedStyle(() => {
-    const v = view.get();
-    return { transform: [{ translateX: v.tx }, { translateY: v.ty }, { scale: v.s }] };
-  });
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: tx.get() }, { translateY: ty.get() }, { scale: scale.get() }],
+  }));
 
   /** Window point → site metres. */
   const toSite = (x: number, y: number): Vec => {
-    const { s: sc, tx, ty } = view.get();
-    return { x: vb.x + (x - tx) / sc / ppm, y: vb.y + (y - ty) / sc / ppm };
+    const sc = scale.get();
+    return { x: vb.x + (x - tx.get()) / sc / ppm, y: vb.y + (y - ty.get()) / sc / ppm };
   };
-  const hitRadiusM = (px: number) => px / (view.get().s * ppm);
+  const hitRadiusM = (px: number) => px / (scale.get() * ppm);
 
   const visible = Object.values(volunteers).filter((v) => v.status === 'checked_in' && positions[v.id]);
 
@@ -309,12 +492,22 @@ export function SiteMap({
   const activeIncidents = incidents.filter((i) => i.status !== 'resolved' && i.status !== 'merged');
   const nearestIncident = (p: Vec, radiusM: number) => activeIncidents.find((i) => dist(i.location, p) < radiusM)?.id ?? null;
   const selectedZone = festival.zones.find((z) => z.id === selectedZoneId);
+  const filterZone = festival.zones.find((z) => z.id === filterZoneId);
+  /** With a zone filter on, anything outside the zone fades back. */
+  const inFilter = (p: Vec) => !filterZone || pointInPolygon(p, filterZone.polygon);
 
-  const pan = Gesture.Pan()
+  // Plain viewing: one finger pans, entirely on the UI thread.
+  const viewPan = Gesture.Pan()
+    .minDistance(4)
+    .onStart(() => panBegin())
+    .onUpdate((e) => panMove(e.translationX, e.translationY))
+    .onEnd((e) => panEnd(e.velocityX, e.velocityY));
+
+  // Editing (dragging people or zones) needs the store, so it runs in React.
+  const editPan = Gesture.Pan()
     .runOnJS(true)
     .minDistance(4)
     .onStart((e) => {
-      gestureStart.set(view.get());
       const p = toSite(e.x - e.translationX, e.y - e.translationY);
       if (mode === 'operator') {
         const id = nearestDot(p, hitRadiusM(24));
@@ -335,13 +528,13 @@ export function SiteMap({
         }
       }
       drag.set({ kind: 'map' });
+      panBegin();
     })
     .onUpdate((e) => {
       const d = drag.get();
       if (!d) return;
       if (d.kind === 'map') {
-        const g = gestureStart.get();
-        apply({ s: g.s, tx: g.tx + e.translationX, ty: g.ty + e.translationY });
+        panMove(e.translationX, e.translationY);
         return;
       }
       const p = toSite(e.x, e.y);
@@ -357,24 +550,37 @@ export function SiteMap({
         updateZone(d.zoneId, { polygon: d.polygon.map((v) => ({ x: v.x + dx, y: v.y + dy })) });
       }
     })
-    .onEnd(() => {
+    .onEnd((e) => {
       const d = drag.get();
       if (d?.kind === 'dot') onDotDropped?.(d.id);
+      if (d?.kind === 'map') panEnd(e.velocityX, e.velocityY);
       drag.set(null);
     });
 
   const pinch = Gesture.Pinch()
-    .runOnJS(true)
-    .onStart(() => {
-      gestureStart.set(view.get());
+    .onStart((e) => {
+      stopMotion();
+      pinching.set(true);
+      const sc = scale.get();
+      pinchFrom.set({ s: sc, x: tx.get(), y: ty.get(), fx: e.focalX, fy: e.focalY, lx: e.focalX, ly: e.focalY, sent: sc });
     })
     .onUpdate((e) => {
-      const g = gestureStart.get();
-      const ns = Math.min(6, Math.max(minS, g.s * e.scale));
-      const k = ns / g.s;
-      apply({ s: ns, tx: e.focalX - (e.focalX - g.tx) * k, ty: e.focalY - (e.focalY - g.ty) * k });
+      const p = pinchFrom.get();
+      const sc = softScale(p.s * e.scale);
+      const r = sc / p.s;
+      // The spot that was under your fingers stays under them, so a pinch can also move the map.
+      follow(sc, e.focalX - (p.fx - p.x) * r, e.focalY - (p.fy - p.y) * r);
+      const resize = Math.abs(sc - p.sent) / p.sent > 0.18;
+      pinchFrom.set({ ...p, lx: e.focalX, ly: e.focalY, sent: resize ? sc : p.sent });
+      if (resize) scheduleOnRN(setZoom, sc);
     })
-    .onEnd(() => setZoom(view.get().s));
+    .onEnd(() => {
+      pinching.set(false);
+      const p = pinchFrom.get();
+      const sc = clamp(scale.get(), minS, MAX_ZOOM);
+      zoomAbout(sc, p.lx, p.ly);
+      scheduleOnRN(setZoom, sc);
+    });
 
   const tap = Gesture.Tap()
     .runOnJS(true)
@@ -391,17 +597,14 @@ export function SiteMap({
     });
 
   const doubleTap = Gesture.Tap()
-    .runOnJS(true)
     .numberOfTaps(2)
     .onEnd((e) => {
-      const v = view.get();
-      const target = v.s > 1.5 ? 1 : 2.2;
-      const k = target / v.s;
-      apply({ s: target, tx: e.x - (e.x - v.tx) * k, ty: e.y - (e.y - v.ty) * k });
-      setZoom(target);
+      const sc = clamp(scale.get() > 1.6 ? 1 : 2.4, minS, MAX_ZOOM);
+      zoomAbout(sc, e.x, e.y, 420);
+      scheduleOnRN(setZoom, sc);
     });
 
-  const gesture = Gesture.Simultaneous(pan, pinch, Gesture.Exclusive(doubleTap, tap));
+  const gesture = Gesture.Simultaneous(mode === 'view' ? viewPan : editPan, pinch, Gesture.Exclusive(doubleTap, tap));
   const onLayout = (e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width);
 
   // Sizes in pixels, converted to metres, easing off a little as you zoom in.
@@ -420,7 +623,7 @@ export function SiteMap({
     <Svg width={cw} height={ch} viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}>
       <Scenery dark={dark} ppm={ppm} showLabels={showLabels && !focus} />
       {festival.zones.map((z) => (
-        <ZoneShape key={z.id} zone={z} selected={z.id === selectedZoneId} dark={dark} />
+        <ZoneShape key={z.id} zone={z} selected={z.id === (selectedZoneId ?? filterZoneId)} faded={!!filterZone && z.id !== filterZone.id} dark={dark} />
       ))}
       {festival.obstacles.map((o, i) => (
         <G key={i}>
@@ -441,18 +644,19 @@ export function SiteMap({
             cy={p.y}
             r={isLead || lit || isMe ? dotR * 1.45 : dotR}
             fill={lit || isMe ? t.accent : isLead ? (dark ? '#E5E7EB' : '#1E293B') : m.dot}
-            fillOpacity={lit || isMe || isLead ? 1 : 0.82}
+            fillOpacity={(lit || isMe || isLead ? 1 : 0.82) * (inFilter(p) ? 1 : 0.18)}
+            strokeOpacity={inFilter(p) ? 1 : 0.18}
             stroke={m.dotStroke}
             strokeWidth={((isLead || isMe || lit ? 2 : 1) / ppm) * k}
           />
         );
       })}
-      {showLabels && festival.zones.map((z) => <ZoneLabel key={z.id} zone={z} fontSize={fontSize} dark={dark} />)}
+      {showLabels && staticMap && festival.zones.map((z) => <ZoneLabel key={z.id} zone={z} fontSize={fontSize} dark={dark} />)}
       {activeIncidents.map((i) => {
         const c = urgencyColor(i.urgency, t) === t.textSecondary ? t.accent : urgencyColor(i.urgency, t);
         const r = dotR * 2.3;
         return (
-          <G key={i.id}>
+          <G key={i.id} opacity={inFilter(i.location) ? 1 : 0.25}>
             <Circle cx={i.location.x} cy={i.location.y} r={r} fill={c} stroke={m.dotStroke} strokeWidth={(2 / ppm) * k} />
             <SvgText
               x={i.location.x}
@@ -488,7 +692,7 @@ export function SiteMap({
         const p = px(i.location);
         const size = Math.max(54, dotR * ppm * 14);
         return (
-          <View key={i.id} pointerEvents="none" style={[styles.anchor, p]}>
+          <View key={i.id} pointerEvents="none" style={[styles.anchor, p, !inFilter(i.location) && styles.faded]}>
             <Pulse size={size} color={c} />
             <Pulse size={size} color={c} delay={900} />
           </View>
@@ -496,7 +700,7 @@ export function SiteMap({
       })}
       {[...walking].map((id) => {
         const p = positions[id];
-        if (!p || volunteers[id]?.status !== 'checked_in') return null;
+        if (!p || volunteers[id]?.status !== 'checked_in' || !inFilter(p)) return null;
         return <Walker key={id} x={px(p).left} y={px(p).top} size={Math.max(14, dotR * ppm * 3.2)} color={t.accent} ring={m.dotStroke} />;
       })}
       {me && !walking.has(currentUserId!) && (
@@ -521,8 +725,12 @@ export function SiteMap({
           <View style={{ position: 'absolute', left: ox, top: oy }}>{content}</View>
         ) : (
           <GestureDetector gesture={gesture}>
-            <View style={StyleSheet.absoluteFill}>
+            <View ref={surface} style={StyleSheet.absoluteFill}>
               <Animated.View style={[styles.inner, animatedStyle]}>{content}</Animated.View>
+              {showLabels &&
+                festival.zones.map((z) => (
+                  <ZoneTag key={z.id} zone={z} vb={vb} ppm={ppm} scale={scale} tx={tx} ty={ty} dark={dark} faded={!!filterZone && z.id !== filterZone.id} />
+                ))}
             </View>
           </GestureDetector>
         ))}
@@ -625,9 +833,57 @@ function MarchingPaths({ paths, vb, w, h, color, width }: { paths: Vec[][]; vb: 
 
 /* --------------------------------- zones --------------------------------- */
 
-function ZoneShape({ zone, selected, dark }: { zone: Zone; selected: boolean; dark: boolean }) {
+function ZoneShape({ zone, selected, faded, dark }: { zone: Zone; selected: boolean; faded: boolean; dark: boolean }) {
   const [fill, stroke] = ZONE_TINT[zone.kind][dark ? 'dark' : 'light'];
-  return <Polygon points={pts(zone.polygon)} fill={fill} fillOpacity={0.92} stroke={stroke} strokeWidth={selected ? 3 : 1.4} strokeOpacity={selected ? 1 : 0.8} />;
+  return (
+    <Polygon
+      points={pts(zone.polygon)}
+      fill={fill}
+      fillOpacity={faded ? 0.4 : 0.92}
+      stroke={stroke}
+      strokeWidth={selected ? 3 : 1.4}
+      strokeOpacity={selected ? 1 : faded ? 0.35 : 0.8}
+    />
+  );
+}
+
+/**
+ * A zone's name over the interactive map. It rides along with the pan and zoom
+ * but stays the same size, so it's sharp at any zoom and never jumps.
+ */
+function ZoneTag({
+  zone,
+  vb,
+  ppm,
+  scale,
+  tx,
+  ty,
+  dark,
+  faded,
+}: {
+  zone: Zone;
+  vb: { x: number; y: number };
+  ppm: number;
+  scale: SharedValue<number>;
+  tx: SharedValue<number>;
+  ty: SharedValue<number>;
+  dark: boolean;
+  faded: boolean;
+}) {
+  const m = dark ? MAP.dark : MAP.light;
+  const [, stroke] = ZONE_TINT[zone.kind][dark ? 'dark' : 'light'];
+  const left = (centroid(zone.polygon).x - vb.x) * ppm;
+  const top = (Math.min(...zone.polygon.map((p) => p.y)) - vb.y) * ppm;
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateX: tx.get() + left * scale.get() }, { translateY: ty.get() + top * scale.get() + 3 }],
+  }));
+  return (
+    <Animated.View pointerEvents="none" style={[styles.tagAnchor, { opacity: faded ? 0.35 : 1 }, style]}>
+      <Text numberOfLines={1} style={[styles.tag, { color: dark ? m.label : stroke, textShadowColor: m.halo }]}>
+        {mapName(zone)}
+      </Text>
+    </Animated.View>
+  );
 }
 
 /** Zone name inside the top of the zone, with a halo so it reads over anything. */
@@ -665,4 +921,15 @@ const styles = StyleSheet.create({
   container: { width: '100%', overflow: 'hidden', borderRadius: 22, borderWidth: StyleSheet.hairlineWidth },
   inner: { transformOrigin: 'left top' },
   anchor: { position: 'absolute', width: 0, height: 0 },
+  faded: { opacity: 0.25 },
+  // A 140-wide box centred on the anchor point (a zero-width parent would squash the text on web).
+  tagAnchor: { position: 'absolute', left: -70, top: 0, width: 140, alignItems: 'center' },
+  tag: {
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '700',
+    fontFamily: LABEL_FONT,
+    textShadowRadius: 3,
+    textShadowOffset: { width: 0, height: 0 },
+  },
 });
