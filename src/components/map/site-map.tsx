@@ -598,13 +598,16 @@ export function SiteMap({
 
   const doubleTap = Gesture.Tap()
     .numberOfTaps(2)
+    .maxDelay(260)
     .onEnd((e) => {
       const sc = clamp(scale.get() > 1.6 ? 1 : 2.4, minS, MAX_ZOOM);
       zoomAbout(sc, e.x, e.y, 420);
       scheduleOnRN(setZoom, sc);
     });
 
-  const gesture = Gesture.Simultaneous(mode === 'view' ? viewPan : editPan, pinch, Gesture.Exclusive(doubleTap, tap));
+  // Taps don't wait to see if a second tap is coming: tapping a dot or incident opens it at once,
+  // and a double-tap still zooms (its first tap just selects whatever is under it, like Apple Maps).
+  const gesture = Gesture.Simultaneous(mode === 'view' ? viewPan : editPan, pinch, doubleTap, tap);
   const onLayout = (e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width);
 
   // Sizes in pixels, converted to metres, easing off a little as you zoom in.
