@@ -11,7 +11,7 @@ import { Button, Card, Header, Row, Screen, Txt } from '@/components/ui/primitiv
 import { Radius, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { structureReport } from '@/state/pipeline';
-import { setScriptedTranscript, useStore } from '@/state/store';
+import { setScriptedTranscript, useStore, zoneById } from '@/state/store';
 import { speechRecognitionAvailable, startListening, stopListening, useSpeechEvents } from '@/services/speech-recognition';
 
 /**
@@ -21,6 +21,14 @@ import { speechRecognitionAvailable, startListening, stopListening, useSpeechEve
 export function ReportScreen() {
   const t = useTheme();
   const userId = useStore((s) => s.currentUserId)!;
+  const me = useStore((s) => s.volunteers[userId]);
+  const first = me?.name.split(' ')[0] ?? '';
+  const who =
+    me?.role === 'safety_lead'
+      ? `${first} · Safety lead`
+      : me?.role === 'location_lead'
+        ? `${first} · Location lead`
+        : `Volunteer · ${zoneById(me?.zoneId)?.name ?? 'Unassigned'}`;
   const script = useStore((s) => s.scriptedTranscript);
   const [text, setText] = useState('');
   const [source, setSource] = useState<'voice' | 'text'>('text');
@@ -107,7 +115,7 @@ export function ReportScreen() {
 
   return (
     <Screen tabs>
-      <Header title="Report something" subtitle="Say what you see. You’ll check it before it’s sent." />
+      <Header eyebrow={who} title="Report something" subtitle="Say what you see. You’ll check it before it’s sent." />
 
       <View style={{ alignItems: 'center', gap: Spacing.three, paddingVertical: Spacing.two }}>
         <MicButton listening={listening} disabled={false} onPress={canVoice ? toggleMic : useKeyboardMic} />
