@@ -23,8 +23,13 @@ import { useTour } from '@/state/tour';
 
 const MIN_FONT = 17;
 
-/** Clears the floating bell and Demo buttons (10 from the top, 40 tall) with a little room. */
-export const TAB_SCREEN_TOP = 58;
+/**
+ * Tab screens start right at the top: the Header lines its first row up with
+ * the floating bell and Demo buttons (4 from the top, 36 tall).
+ */
+export const TAB_SCREEN_TOP = 0;
+/** How far the Header's first row stops short of the right edge, to stay clear of those buttons. */
+const BUTTONS_CLEARANCE = 144;
 
 export function Screen({
   children,
@@ -332,16 +337,19 @@ export function EmptyState({ title, body, children }: { title: string; body?: st
 /** Page header: a big title with an optional line under it. */
 export function Header({ eyebrow, title, subtitle, right }: { eyebrow?: string; title: string; subtitle?: string; right?: ReactNode }) {
   const t = useTheme();
+  // The first row (eyebrow, or the title when there isn't one) is centred on the buttons' row.
   return (
-    <Animated.View entering={rise(0, 6)} style={{ gap: Spacing.one, marginBottom: Spacing.one }}>
+    <Animated.View entering={rise(0, 6)} style={{ gap: Spacing.one, marginBottom: Spacing.one, marginTop: eyebrow ? 11 : 2 }}>
       <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <View style={{ flex: 1, gap: Spacing.one }}>
           {eyebrow ? (
-            <Txt variant="label" color={t.accent}>
+            <Txt variant="label" color={t.accent} style={{ paddingRight: BUTTONS_CLEARANCE }}>
               {eyebrow}
             </Txt>
           ) : null}
-          <Txt variant="title">{title}</Txt>
+          <Txt variant="title" style={eyebrow ? undefined : { paddingRight: BUTTONS_CLEARANCE }}>
+            {title}
+          </Txt>
         </View>
         {right}
       </Row>

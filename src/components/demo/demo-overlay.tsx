@@ -50,7 +50,7 @@ export function DemoOverlay() {
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       {showDemoButton && (
-        <View pointerEvents="box-none" style={[styles.topRight, { top: insets.top + 10 }]}>
+        <View pointerEvents="box-none" style={[styles.topRight, { top: insets.top + 4 }]}>
           <Pressable
             onPress={() => router.push('/inbox')}
             accessibilityLabel={unread ? `Alerts, ${unread} new` : 'Alerts'}
@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
   tourWrap: { position: 'absolute', left: 12, right: 12, alignItems: 'center' },
   tourInner: { width: '100%', maxWidth: 560 },
   topRight: { position: 'absolute', right: 16, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  bellBtn: { width: 40, height: 40, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
+  bellBtn: { width: 36, height: 36, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
   badge: {
     position: 'absolute',
     top: -3,
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 14,
-    height: 40,
+    height: 36,
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
   },
