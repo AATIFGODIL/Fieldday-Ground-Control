@@ -35,7 +35,7 @@ import { Glyph } from '@/components/ui/glyph';
 // warm through the problem (ember and char in turn), cooling through the
 // solution (plum, dusk) to blue for the demo, and back to ink to close.
 
-type Theme = 'light' | 'dark' | 'ink' | 'ember' | 'char' | 'plum' | 'dusk' | 'midnight';
+type Theme = 'light' | 'dark' | 'black' | 'ink' | 'ember' | 'char' | 'plum' | 'dusk' | 'midnight';
 
 interface Colors {
   bg: string;
@@ -58,6 +58,7 @@ const PALETTE: Record<Theme, Colors> = {
   char: { bg: '#160E0B', ink: '#F2E9E1', grey: '#A8958A', muted: '#D6C6BA', accent: '#E0A458', fill: '#241914', depth: '#4A2C18', offscript: '#E0A458' },
   plum: { bg: '#0E0816', ink: '#F4F1EA', grey: '#BDB2D2', muted: '#DED7E9', accent: '#C9B6F2', fill: 'rgba(244,241,234,0.1)', depth: '#2A1B3F', offscript: '#E3C27A' },
   dusk: { bg: '#0E0A14', ink: '#F4F1EA', grey: '#B3AAC4', muted: '#DAD3E6', accent: '#C9B6F2', fill: '#1C1626', depth: '#2A1B3F', offscript: '#E3C27A' },
+  black: { bg: '#000000', ink: '#F4F1EA', grey: '#8E8C87', muted: '#A9A7A1', accent: '#9AA6D6', fill: 'rgba(244,241,234,0.1)', depth: '#2E3A66', offscript: '#E0A458' },
   midnight: { bg: '#0A1328', ink: '#F4F1EA', grey: '#B3BDD6', muted: '#DAE0EC', accent: '#F4F1EA', fill: 'rgba(244,241,234,0.1)', depth: '#030812', offscript: '#E3C27A' },
 };
 
@@ -476,11 +477,10 @@ function LaunchFilm({ s }: { s: Sizes }) {
     });
     return () => v.pause();
   }, []);
-  const w = Math.min(s.width * 0.86, ((s.height * 0.8) * 16) / 9);
   if (!WEB) return <Muted s={s}>The launch film plays in the web version of this deck.</Muted>;
   return (
-    <View style={{ alignSelf: 'center', width: w, height: (w * 9) / 16, borderRadius: 22, overflow: 'hidden', backgroundColor: '#000', boxShadow: '0 30px 90px rgba(0,0,0,0.65)' }}>
-      <video ref={ref} src="/launch.mp4" playsInline preload="auto" style={{ width: '100%', height: '100%', display: 'block' }} />
+    <View style={{ flex: 1, alignSelf: 'stretch', backgroundColor: '#000' }}>
+      <video ref={ref} src="/launch.mp4" playsInline preload="auto" style={{ width: '100%', height: '100%', display: 'block', objectFit: 'contain', background: '#000' }} />
       {muted && (
         <Pressable
           onPress={() => {
@@ -488,7 +488,7 @@ function LaunchFilm({ s }: { s: Sizes }) {
             if (v) v.muted = false;
             setMuted(false);
           }}
-          style={({ hovered }) => ({ position: 'absolute', right: 20, bottom: 20, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12, backgroundColor: hovered ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.6)' })}>
+          style={({ hovered }) => ({ position: 'absolute', right: 32, bottom: 32, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12, backgroundColor: hovered ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.6)' })}>
           <Text style={t(18, '700', '#FFFFFF')}>Turn sound on</Text>
         </Pressable>
       )}
@@ -509,6 +509,8 @@ interface Slide {
   aside?: (s: Sizes) => ReactNode;
   /** Lines that animate themselves (cards) aren't wrapped again. */
   raw?: number[];
+  /** Fills the whole slide, edge to edge, instead of lines (the launch film). */
+  full?: (s: Sizes) => ReactNode;
 }
 
 const SLIDES: Slide[] = [
@@ -627,12 +629,11 @@ const SLIDES: Slide[] = [
     aside: (s) => <IsoMap s={s} />,
   },
   {
-    theme: 'plum',
-    center: true,
+    theme: 'black',
     hasButton: true,
     notes: 'The launch film plays by itself (30 seconds). When it ends, press → to go on.',
-    raw: [0],
-    lines: (s) => [<LaunchFilm key="film" s={s} />],
+    lines: () => [],
+    full: (s) => <LaunchFilm s={s} />,
   },
   {
     theme: 'dusk',
@@ -901,8 +902,8 @@ export default function Pitch() {
             style={[
               {
                 flex: 1,
-                paddingHorizontal: s.pad,
-                paddingVertical: 56,
+                paddingHorizontal: slide.full ? 0 : s.pad,
+                paddingVertical: slide.full ? 0 : 56,
                 flexDirection: aside && !s.phone ? 'row' : 'column',
                 alignItems: aside && !s.phone ? 'center' : slide.center ? 'center' : 'flex-start',
                 justifyContent: 'center',
@@ -910,17 +911,21 @@ export default function Pitch() {
               },
               sectionStyle,
             ]}>
-            <View
-              style={{
-                flex: aside && !s.phone ? 1 : undefined,
-                alignSelf: slide.center ? 'center' : 'stretch',
-                alignItems: slide.center ? 'center' : 'flex-start',
-                // Beside an aside the column fills the slide's height, so centre its lines in it.
-                justifyContent: 'center',
-                gap: clamp(s.width * 0.016, 14, 28),
-              }}>
-              {lines}
-            </View>
+            {slide.full ? (
+              slide.full(s)
+            ) : (
+              <View
+                style={{
+                  flex: aside && !s.phone ? 1 : undefined,
+                  alignSelf: slide.center ? 'center' : 'stretch',
+                  alignItems: slide.center ? 'center' : 'flex-start',
+                  // Beside an aside the column fills the slide's height, so centre its lines in it.
+                  justifyContent: 'center',
+                  gap: clamp(s.width * 0.016, 14, 28),
+                }}>
+                {lines}
+              </View>
+            )}
             {aside && (
               <Rise order={lines.length} center>
                 {aside}
@@ -941,7 +946,7 @@ export default function Pitch() {
           </Pressable>
         )}
 
-        <View pointerEvents="none" style={styles.track}>
+        <View pointerEvents="none" style={[styles.track, slide.full && { opacity: 0 }]}>
           <Animated.View style={[{ height: 6, backgroundColor: colors.ink, opacity: 0.85 }, barStyle]} />
         </View>
 
