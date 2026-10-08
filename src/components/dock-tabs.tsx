@@ -20,13 +20,14 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Type } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
 import { Glyph } from './ui/glyph';
 import type { TabSpec } from './role-tabs';
 
 const PAD = 6;
-const BAR_H = 72;
+const BAR_H = 70;
 const WIDTH_FACTOR = 0.9;
 const DECELERATION = 0.998;
 
@@ -58,7 +59,7 @@ export function DockTabs({ tabs, base }: { tabs: TabSpec[]; base: string }) {
 }
 
 function Dock({ tabs, hrefs, base }: { tabs: TabSpec[]; hrefs: string[]; base: string }) {
-  const t = useTheme();
+  const dark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const n = tabs.length;
@@ -142,8 +143,7 @@ function Dock({ tabs, hrefs, base }: { tabs: TabSpec[]; hrefs: string[]; base: s
 
   const gliderStyle = useAnimatedStyle(() => ({
     width: geom.get().gliderW,
-    transform: [{ translateX: x.get() }, { scale: withSpring(dragging.get() ? 1.03 : 1, { duration: 300, dampingRatio: 1 }) }],
-    shadowOpacity: withSpring(dragging.get() ? 0.25 : 0, { duration: 250, dampingRatio: 1 }),
+    transform: [{ translateX: x.get() }, { scale: withSpring(dragging.get() ? 1.04 : 1, { duration: 300, dampingRatio: 1 }) }],
   }));
 
   const gliderCenter = useDerivedValue(() => x.get() + geom.get().gliderW / 2);
@@ -159,14 +159,26 @@ function Dock({ tabs, hrefs, base }: { tabs: TabSpec[]; hrefs: string[]; base: s
           style={[
             styles.bar,
             {
-              backgroundColor: t.glass,
-              borderColor: t.border,
-              shadowColor: '#000',
+              backgroundColor: dark ? 'rgba(30,30,33,0.78)' : 'rgba(255,255,255,0.82)',
+              borderColor: dark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.07)',
+              boxShadow: dark
+                ? '0 14px 34px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08)'
+                : '0 14px 34px rgba(20,24,40,0.14), 0 2px 6px rgba(20,24,40,0.08), inset 0 1px 0 rgba(255,255,255,0.9)',
             },
             Platform.OS === 'web' && ({ backdropFilter: 'blur(32px) saturate(180%)', WebkitBackdropFilter: 'blur(32px) saturate(180%)' } as object),
           ]}>
           {barW > 0 && (
-            <Animated.View pointerEvents="none" style={[styles.glider, { backgroundColor: t.glider, shadowColor: '#000' }, gliderStyle]} />
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.glider,
+                {
+                  backgroundColor: dark ? 'rgba(91,120,255,0.22)' : 'rgba(35,64,217,0.10)',
+                  boxShadow: dark ? 'inset 0 0 0 1px rgba(124,146,255,0.35)' : 'inset 0 0 0 1px rgba(35,64,217,0.16)',
+                },
+                gliderStyle,
+              ]}
+            />
           )}
           {tabs.map((tab, i) => (
             <DockItem
@@ -178,6 +190,7 @@ function Dock({ tabs, hrefs, base }: { tabs: TabSpec[]; hrefs: string[]; base: s
               radius={itemW * 0.9}
               gliderCenter={gliderCenter}
               pressed={pressed}
+              dragging={dragging}
             />
           ))}
         </View>
@@ -194,6 +207,7 @@ function DockItem({
   radius,
   gliderCenter,
   pressed,
+  dragging,
 }: {
   tab: TabSpec;
   index: number;
@@ -202,29 +216,33 @@ function DockItem({
   radius: number;
   gliderCenter: SharedValue<number>;
   pressed: SharedValue<number>;
+  dragging: SharedValue<boolean>;
 }) {
   const t = useTheme();
   const color = active ? t.accent : t.textSecondary;
 
-  // Items rise toward the highlight as it passes, and shrink a touch under a finger.
+  // While the highlight is dragged, items rise toward it as it passes; at rest they sit level.
+  // They shrink a touch under a finger, and the selected one's icon is a touch larger.
   const style = useAnimatedStyle(() => {
     const d = Math.abs(center - gliderCenter.get());
-    const lift = radius > 0 && d < radius ? -3 * Math.cos((d / radius) * (Math.PI / 2)) : 0;
-    const scale = withSpring(pressed.get() === index ? 0.95 : 1, { duration: 220, dampingRatio: 1 });
+    const near = radius > 0 && d < radius ? Math.cos((d / radius) * (Math.PI / 2)) : 0;
+    const lift = withSpring(dragging.get() ? -3 * near : 0, { duration: 200, dampingRatio: 1 });
+    const scale = withSpring(pressed.get() === index ? 0.94 : 1, { duration: 220, dampingRatio: 1 });
     return { transform: [{ translateY: lift }, { scale }] };
   });
+  const iconStyle = useAnimatedStyle(() => ({ transform: [{ scale: withSpring(active ? 1.08 : 1, { duration: 320, dampingRatio: 1 }) }] }));
 
   return (
     <View style={styles.item} accessibilityRole="tab" accessibilityState={{ selected: active }} accessibilityLabel={tab.label}>
       <Animated.View style={[styles.itemInner, style]}>
-        <View>
+        <Animated.View style={iconStyle}>
           <Glyph name={tab.glyph} size={24} color={color} strokeWidth={active ? 2.4 : 2} />
           {tab.badge ? (
             <View style={[styles.badge, { backgroundColor: t.critical, borderColor: t.background }]}>
               <Text style={[styles.badgeText, { color: '#FFFFFF' }]}>{tab.badge}</Text>
             </View>
           ) : null}
-        </View>
+        </Animated.View>
         <Text numberOfLines={1} style={[Type.label, { color, fontWeight: active ? '700' : '500' }]}>
           {tab.label}
         </Text>
@@ -243,11 +261,7 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     paddingHorizontal: PAD,
     borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 12,
+    borderWidth: 1,
     userSelect: 'none',
   },
   glider: {
@@ -256,8 +270,6 @@ const styles = StyleSheet.create({
     top: PAD,
     bottom: PAD,
     borderRadius: 999,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
   },
   item: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   itemInner: { alignItems: 'center', gap: 2 },
