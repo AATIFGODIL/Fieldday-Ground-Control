@@ -7,6 +7,10 @@
   "functions": {
     "api/**/*.ts": {
       "maxDuration": 60
+    },
+    "api/voice.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{node_modules/**,dist/**,assets/**,src/**,server/**,.expo/**}"
     }
   },
   "rewrites": [
