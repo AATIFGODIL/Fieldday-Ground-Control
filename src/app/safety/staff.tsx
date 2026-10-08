@@ -49,6 +49,8 @@ export default function Staff() {
   const all = Object.values(volunteers);
 
   const [pending, setPending] = useState<PendingChange | null>(null);
+  // "Moving 4 people…" after an approval, for a few seconds.
+  const [done, setDone] = useState<{ key: number; text: string } | null>(null);
   const [open, setOpen] = useState<string | null>(params.zone ?? null);
   const [handledZone, setHandledZone] = useState<string | undefined>(undefined);
 
@@ -61,6 +63,12 @@ export default function Staff() {
   useEffect(() => {
     scroll.current?.scrollTo({ y: 0, animated: true });
   }, [pendingKey]);
+
+  useEffect(() => {
+    if (!done) return;
+    const id = setTimeout(() => setDone(null), 4000);
+    return () => clearTimeout(id);
+  }, [done]);
 
   // Arriving from "Find cover": open that zone and show who could fill it.
   if (params.zone && arrival !== handledZone) {
@@ -82,7 +90,30 @@ export default function Staff() {
 
       {pending && (
         <Appear key={pending.key}>
-          <ChangePreview change={pending} onDone={() => setPending(null)} />
+          <ChangePreview
+            change={pending}
+            onDone={(moved) => {
+              setPending(null);
+              if (moved === undefined) return;
+              setDone({
+                key: nextKey(),
+                text: moved ? `Moving ${moved === 1 ? '1 person' : `${moved} people`}. They’ve been told where to go.` : 'New targets set.',
+              });
+            }}
+          />
+        </Appear>
+      )}
+
+      {done && !pending && (
+        <Appear key={done.key}>
+          <Card tone="strong" style={{ borderColor: t.success }}>
+            <Row>
+              <Glyph name="check" size={24} color={t.success} strokeWidth={3} />
+              <Txt variant="strong" style={{ flex: 1 }}>
+                {done.text}
+              </Txt>
+            </Row>
+          </Card>
         </Appear>
       )}
 

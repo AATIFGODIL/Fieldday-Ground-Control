@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -26,7 +27,8 @@ const SOURCE_LABEL = { preset: 'Surge', ai: 'AI suggestion · you decide', manua
  * One staffing change, ready to approve: the new numbers, who would move to
  * meet them (untick anyone), and anything we couldn't cover.
  */
-export function ChangePreview({ change, onDone }: { change: PendingChange; onDone: () => void }) {
+/** `onDone(moved)` after approving; `onDone()` with nothing when cancelled. */
+export function ChangePreview({ change, onDone }: { change: PendingChange; onDone: (moved?: number) => void }) {
   const t = useTheme();
   const volunteers = useStore((s) => s.volunteers);
   const temp = useStore((s) => s.temperatureC);
@@ -50,7 +52,8 @@ export function ChangePreview({ change, onDone }: { change: PendingChange; onDon
 
   const approve = () => {
     applyStaffing({ title: change.title, note: change.note, source: change.source, changes: change.changes, moves: chosen });
-    onDone();
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    onDone(chosen.length);
   };
 
   const isAI = change.source === 'ai';
@@ -61,7 +64,7 @@ export function ChangePreview({ change, onDone }: { change: PendingChange; onDon
         <Txt variant="label" color={isAI ? t.ai : t.accent} style={{ flex: 1 }}>
           {SOURCE_LABEL[change.source]}
         </Txt>
-        <Pressable hitSlop={12} onPress={onDone} accessibilityLabel="Cancel">
+        <Pressable hitSlop={12} onPress={() => onDone()} accessibilityLabel="Cancel">
           <Glyph name="x" size={22} color={t.textSecondary} />
         </Pressable>
       </Row>
@@ -159,7 +162,7 @@ export function ChangePreview({ change, onDone }: { change: PendingChange; onDon
         disabled={change.changes.length === 0 && chosen.length === 0}
         onPress={approve}
       />
-      <Button title="Cancel" variant="secondary" onPress={onDone} />
+      <Button title="Cancel" variant="secondary" onPress={() => onDone()} />
     </Card>
   );
 }
