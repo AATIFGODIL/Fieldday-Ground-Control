@@ -3,9 +3,11 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Avatar } from '@/components/incident/parts';
+import { LiveMap } from '@/components/map/live-map';
 import { SiteMap } from '@/components/map/site-map';
+import { ZoneFilter } from '@/components/map/zone-filter';
 import { Glyph } from '@/components/ui/glyph';
-import { Card, Header, Row, Txt } from '@/components/ui/primitives';
+import { Card, Header, Row, TAB_SCREEN_TOP, Txt } from '@/components/ui/primitives';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { ROLE_LABELS, SKILL_LABELS } from '@/domain/types';
 import { useScreenSize } from '@/hooks/use-screen-size';
@@ -27,7 +29,10 @@ export function MapScreen({ canOperate }: { canOperate: boolean }) {
   const [operator, setOperator] = useState(params.operator === '1');
   const [selected, setSelected] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [zone, setZone] = useState<string | null>(null);
   const v = selected ? volunteers[selected] : undefined;
+  const live = mode === 'live';
+  const mapHeight = Math.max(360, Math.min(600, winH * 0.58));
   const activeDispatchIds = dispatches.filter((d) => d.status === 'notified' || d.status === 'acknowledged').map((d) => d.id);
   const canDrag = (canOperate || params.operator === '1') && mode === 'simulated';
   const operating = operator && canDrag;
@@ -37,49 +42,70 @@ export function MapScreen({ canOperate }: { canOperate: boolean }) {
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: BottomTabInset + guide }]}
         scrollEnabled={!operating}>
-        <Header title="Map" subtitle={`${onShift} people on shift. You only appear here while you’re checked in.`} />
-
-        <SiteMap
-          tall
-          height={Math.max(360, Math.min(600, winH * 0.58))}
-          mode={operating ? 'operator' : 'view'}
-          pathDispatchIds={activeDispatchIds}
-          highlightIds={selected ? [selected] : undefined}
-          onDotPress={(id) => setSelected(id)}
-          onIncidentPress={(id) => router.push({ pathname: '/incident/[id]', params: { id } })}
-          onDotDropped={(id) => {
-            setSelected(id);
-            const zone = dropDot(id);
-            setNote(zone ? `${volunteers[id]?.name} moved to ${zone}` : null);
-          }}
+        <Header
+          title="Map"
+          subtitle={live ? 'Live GPS: where you really are right now.' : `${onShift} people on shift. You only appear here while you’re checked in.`}
         />
 
-        <View style={styles.legend}>
-          <Legend swatch={<View style={[styles.dot, { backgroundColor: t.accent, opacity: 0.8 }]} />} label="Volunteer" />
-          <Legend swatch={<View style={[styles.dot, styles.big, { backgroundColor: t.text }]} />} label="Lead" />
-          <Legend swatch={<View style={[styles.dot, styles.big, { backgroundColor: t.accent, borderWidth: 2, borderColor: t.background }]} />} label="On the way" />
-          <Legend swatch={<View style={[styles.dot, styles.big, { backgroundColor: t.critical }]} />} label="Incident" />
-        </View>
-
-        {v && (
-          <Card>
-            <Row style={{ justifyContent: 'space-between' }}>
-              <Row>
-                <Avatar name={v.name} />
-                <View>
-                  <Txt variant="strong">{v.name}</Txt>
-                  <Txt variant="caption">
-                    {ROLE_LABELS[v.role]} · {zoneById(v.leadsZoneId ?? v.zoneId)?.name}
+        {live ? (
+          <LiveMap height={mapHeight} />
+        ) : (
+          <View style={{ height: mapHeight }}>
+            <SiteMap
+              tall
+              height={mapHeight}
+              mode={operating ? 'operator' : 'view'}
+              filterZoneId={zone}
+              pathDispatchIds={activeDispatchIds}
+              highlightIds={selected ? [selected] : undefined}
+              onDotPress={(id) => setSelected(id)}
+              onIncidentPress={(id) => router.push({ pathname: '/incident/[id]', params: { id } })}
+              onDotDropped={(id) => {
+                setSelected(id);
+                const to = dropDot(id);
+                setNote(to ? `${volunteers[id]?.name} moved to ${to}` : null);
+              }}
+            />
+            {/* The person you tapped shows on the map itself, not below it where you'd have to scroll. */}
+            {v && (
+              <View style={styles.sheet} pointerEvents="box-none">
+                <Card style={[styles.person, { backgroundColor: t.background, borderColor: t.border }]}>
+                  <Row style={{ justifyContent: 'space-between' }}>
+                    <Row style={{ flex: 1 }}>
+                      <Avatar name={v.name} />
+                      <View style={{ flex: 1 }}>
+                        <Txt variant="strong" numberOfLines={1}>
+                          {v.name}
+                        </Txt>
+                        <Txt variant="caption" numberOfLines={1}>
+                          {ROLE_LABELS[v.role]} · {zoneById(v.leadsZoneId ?? v.zoneId)?.name}
+                        </Txt>
+                      </View>
+                    </Row>
+                    <Pressable hitSlop={12} onPress={() => setSelected(null)} accessibilityLabel="Close">
+                      <Glyph name="x" size={24} color={t.textSecondary} />
+                    </Pressable>
+                  </Row>
+                  <Txt variant="body" numberOfLines={2}>
+                    {v.skills.length ? v.skills.map((s) => SKILL_LABELS[s]).join(', ') : 'No certificates'}
                   </Txt>
-                </View>
-              </Row>
-              <Pressable hitSlop={12} onPress={() => setSelected(null)} accessibilityLabel="Close">
-                <Glyph name="x" size={24} color={t.textSecondary} />
-              </Pressable>
-            </Row>
-            <Txt variant="body">{v.skills.length ? v.skills.map((s) => SKILL_LABELS[s]).join(', ') : 'No certificates'}</Txt>
-            <Txt variant="caption">Speaks {v.languages.join(', ')}</Txt>
-          </Card>
+                  <Txt variant="caption" numberOfLines={1}>
+                    Speaks {v.languages.join(', ')}
+                  </Txt>
+                </Card>
+              </View>
+            )}
+            <ZoneFilter value={zone} onChange={setZone} maxHeight={mapHeight - 72} />
+          </View>
+        )}
+
+        {!live && (
+          <View style={styles.legend}>
+            <Legend swatch={<View style={[styles.dot, { backgroundColor: t.accent, opacity: 0.8 }]} />} label="Volunteer" />
+            <Legend swatch={<View style={[styles.dot, styles.big, { backgroundColor: t.text }]} />} label="Lead" />
+            <Legend swatch={<View style={[styles.dot, styles.big, { backgroundColor: t.accent, borderWidth: 2, borderColor: t.background }]} />} label="On the way" />
+            <Legend swatch={<View style={[styles.dot, styles.big, { backgroundColor: t.critical }]} />} label="Incident" />
+          </View>
         )}
 
         {canDrag && (
@@ -98,7 +124,9 @@ export function MapScreen({ canOperate }: { canOperate: boolean }) {
         )}
 
         <Txt variant="caption" center>
-          Pinch or double-tap to zoom. Tap a dot or an incident for details.
+          {live
+            ? 'Your location is only used while you’re checked in. Switch back to Simulated in Demo for the festival map.'
+            : 'Pinch or double-tap to zoom. Tap a dot or an incident for details.'}
         </Txt>
       </ScrollView>
     </SafeAreaView>
@@ -115,9 +143,18 @@ function Legend({ swatch, label }: { swatch: React.ReactNode; label: string }) {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: Spacing.four, paddingTop: Spacing.three, gap: Spacing.four, width: '100%', maxWidth: MaxContentWidth, alignSelf: 'center' },
+  content: { padding: Spacing.four, paddingTop: TAB_SCREEN_TOP, gap: Spacing.four, width: '100%', maxWidth: MaxContentWidth, alignSelf: 'center' },
   legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: Spacing.four, rowGap: Spacing.two },
   dot: { width: 10, height: 10, borderRadius: 5 },
   big: { width: 16, height: 16, borderRadius: 8 },
+  sheet: { position: 'absolute', left: Spacing.three, right: Spacing.three, bottom: Spacing.three },
+  person: {
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
   toggle: { width: 30, height: 30, borderRadius: 8, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
 });
