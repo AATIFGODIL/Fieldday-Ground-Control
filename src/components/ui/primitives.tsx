@@ -23,6 +23,9 @@ import { useTour } from '@/state/tour';
 
 const MIN_FONT = 17;
 
+/** Clears the floating bell and Demo buttons (10 from the top, 40 tall) with a little room. */
+export const TAB_SCREEN_TOP = 58;
+
 export function Screen({
   children,
   scroll = true,
@@ -44,12 +47,14 @@ export function Screen({
   // Leave room to scroll everything clear of the pinned guide card.
   const guide = useTour((s) => (s.scenario ? s.cardHeight + 16 : 0));
   const bottom = (tabs ? BottomTabInset : 48) + guide;
+  // Tab screens have the alerts bell and Demo button floating top right, so the title starts below them.
+  const top = tabs ? TAB_SCREEN_TOP : Spacing.three;
   return (
     <SafeAreaView edges={edges} style={{ flex: 1, backgroundColor: t.background }}>
       {scroll ? (
         <ScrollView
           ref={scrollRef}
-          contentContainerStyle={[styles.screenContent, { paddingBottom: bottom }, contentStyle]}
+          contentContainerStyle={[styles.screenContent, { paddingTop: top, paddingBottom: bottom }, contentStyle]}
           contentInsetAdjustmentBehavior="automatic"
           keyboardShouldPersistTaps="handled">
           {children}

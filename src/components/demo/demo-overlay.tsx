@@ -17,17 +17,18 @@ import { useTour } from '@/state/tour';
 const glass = Platform.OS === 'web' ? ({ backdropFilter: 'blur(28px) saturate(180%)', WebkitBackdropFilter: 'blur(28px) saturate(180%)' } as object) : null;
 
 /** Tab screens have a floating bar at the bottom; everything else doesn't. */
-const onTabScreen = (path: string) => /^\/(safety|lead|volunteer)(\/(map|report))?\/?$/.test(path);
+const onTabScreen = (path: string) => /^\/(safety|lead|volunteer)(\/(map|report|staff))?\/?$/.test(path);
 
 /**
- * Always-on-top layer: the small "Demo" button, the in-app alert banner, and
- * the guided-demo card pinned above the tab bar.
+ * Always-on-top layer: the alerts bell and "Demo" button, the in-app alert
+ * banner, and the guided-demo card pinned above the tab bar.
  */
 export function DemoOverlay() {
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const user = useStore((s) => (s.currentUserId ? s.volunteers[s.currentUserId] : undefined));
   const banner = useStore((s) => s.banner);
+  const unread = useStore((s) => s.notices.filter((n) => n.to === s.currentUserId && !n.read).length);
   const tour = useTour();
   const t = useTheme();
 
@@ -49,17 +50,30 @@ export function DemoOverlay() {
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       {showDemoButton && (
-        <Pressable
-          onPress={() => router.push('/demo')}
-          accessibilityLabel="Open the demo menu"
-          style={({ pressed }) => [
-            styles.demoBtn,
-            glass,
-            { top: insets.top + 10, backgroundColor: t.glass, borderColor: t.border, transform: [{ scale: pressed ? 0.95 : 1 }] },
-          ]}>
-          <Glyph name="play" size={16} color={t.accent} />
-          <Text style={[Type.label, { color: t.accent }]}>Demo</Text>
-        </Pressable>
+        <View pointerEvents="box-none" style={[styles.topRight, { top: insets.top + 10 }]}>
+          <Pressable
+            onPress={() => router.push('/inbox')}
+            accessibilityLabel={unread ? `Alerts, ${unread} new` : 'Alerts'}
+            style={({ pressed }) => [
+              styles.bellBtn,
+              glass,
+              { backgroundColor: t.glass, borderColor: t.border, transform: [{ scale: pressed ? 0.92 : 1 }] },
+            ]}>
+            <Glyph name="bell" size={19} color={t.text} />
+            {unread > 0 && (
+              <View style={[styles.badge, { backgroundColor: t.critical, borderColor: t.background }]}>
+                <Text style={styles.badgeText}>{unread > 9 ? '9+' : unread}</Text>
+              </View>
+            )}
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/demo')}
+            accessibilityLabel="Open the demo menu"
+            style={({ pressed }) => [styles.demoBtn, glass, { backgroundColor: t.glass, borderColor: t.border, transform: [{ scale: pressed ? 0.95 : 1 }] }]}>
+            <Glyph name="play" size={16} color={t.accent} />
+            <Text style={[Type.label, { color: t.accent }]}>Demo</Text>
+          </Pressable>
+        </View>
       )}
 
       {banner && user && !tour.scenario && (
@@ -143,9 +157,22 @@ function SwipeBanner({ notice }: { notice: Notice }) {
 const styles = StyleSheet.create({
   tourWrap: { position: 'absolute', left: 12, right: 12, alignItems: 'center' },
   tourInner: { width: '100%', maxWidth: 560 },
-  demoBtn: {
+  topRight: { position: 'absolute', right: 16, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  bellBtn: { width: 40, height: 40, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
+  badge: {
     position: 'absolute',
-    right: 16,
+    top: -3,
+    right: -3,
+    minWidth: 19,
+    height: 19,
+    paddingHorizontal: 4,
+    borderRadius: 10,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: { color: '#FFFFFF', fontSize: 11, lineHeight: 13, fontWeight: '800' },
+  demoBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
