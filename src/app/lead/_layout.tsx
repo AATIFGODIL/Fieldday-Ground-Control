@@ -19,6 +19,7 @@ export default function LeadLayout() {
       base="/lead"
       tabs={[
         { name: 'index', label: 'My zone', sf: 'exclamationmark.triangle.fill', md: 'warning', glyph: 'alert', badge: open ? String(open) : undefined },
+        { name: 'report', label: 'Report', sf: 'mic.fill', md: 'mic', glyph: 'mic' },
         { name: 'map', label: 'Map', sf: 'map.fill', md: 'map', glyph: 'map' },
       ]}
     />

@@ -14,8 +14,11 @@ import { structureReport } from '@/state/pipeline';
 import { setScriptedTranscript, useStore } from '@/state/store';
 import { speechRecognitionAvailable, startListening, stopListening, useSpeechEvents } from '@/services/speech-recognition';
 
-/** Say it (or type it). AI writes it up; you confirm before anything is sent. */
-export default function Report() {
+/**
+ * Say it (or type it). AI writes it up; you confirm before anything is sent.
+ * Anyone on the crew can report: volunteers, location leads and Mo.
+ */
+export function ReportScreen() {
   const t = useTheme();
   const userId = useStore((s) => s.currentUserId)!;
   const script = useStore((s) => s.scriptedTranscript);

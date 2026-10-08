@@ -26,6 +26,7 @@ const URGENCY_HELP: Record<Urgency, string> = {
 export default function ReportConfirm() {
   const t = useTheme();
   const draft = useStore((s) => s.reportDraft);
+  const role = useStore((s) => (draft ? s.volunteers[draft.reporterId]?.role : undefined));
   const zones = useStore((s) => s.festival.zones);
   const st = draft?.structured;
 
@@ -58,7 +59,9 @@ export default function ReportConfirm() {
       urgency,
     });
     router.dismissAll();
-    router.replace({ pathname: '/volunteer', params: { reported: incident.ref } });
+    // Volunteers go home to "Report sent". Mo and the leads go straight to the incident, where they can act on it.
+    if (role === 'volunteer') router.replace({ pathname: '/volunteer', params: { reported: incident.ref } });
+    else router.push({ pathname: '/incident/[id]', params: { id: incident.id } });
   };
 
   return (
@@ -165,7 +168,7 @@ export default function ReportConfirm() {
         })}
       </Appear>
 
-      <Button title={urgency ? 'Send to the safety lead' : 'Pick how urgent first'} size="lg" disabled={!urgency || !description.trim()} onPress={submit} />
+      <Button title={!urgency ? 'Pick how urgent first' : role === 'safety_lead' ? 'Log it' : 'Send to the safety lead'} size="lg" disabled={!urgency || !description.trim()} onPress={submit} />
     </Screen>
   );
 }
