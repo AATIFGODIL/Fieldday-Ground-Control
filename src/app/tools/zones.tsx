@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { SiteMap } from '@/components/map/site-map';
@@ -18,6 +18,12 @@ export default function Zones() {
   const zones = useStore((s) => s.festival.zones);
   const [selected, setSelected] = useState<string | null>(null);
   const zone = zones.find((z) => z.id === selected);
+  const details = useRef<ScrollView>(null);
+  // A newly picked zone's settings start from the top, not wherever the last one was scrolled to.
+  const select = (id: string | null) => {
+    setSelected(id);
+    details.current?.scrollTo({ y: 0, animated: false });
+  };
 
   const setReq = (skill: Skill | null, min: number) => {
     if (!zone) return;
@@ -33,9 +39,9 @@ export default function Zones() {
         <Txt variant="caption">Tap a zone to select it. Drag it to move, or drag a corner handle to reshape.</Txt>
       </View>
       <View style={{ paddingHorizontal: Spacing.two }}>
-        <SiteMap mode="zones" selectedZoneId={selected} onSelectZone={setSelected} />
+        <SiteMap mode="zones" selectedZoneId={selected} onSelectZone={select} />
       </View>
-      <ScrollView contentContainerStyle={{ padding: Spacing.three, gap: Spacing.three, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={details} contentContainerStyle={{ padding: Spacing.three, gap: Spacing.three, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
         {!zone ? (
           <Txt variant="caption">No zone selected.</Txt>
         ) : (

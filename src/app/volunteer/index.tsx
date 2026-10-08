@@ -1,5 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { ScrollView, View } from 'react-native';
 
 import { IncidentRow } from '@/components/incident/parts';
 import { ShiftCard } from '@/components/shift-card';
@@ -23,6 +24,11 @@ export default function VolunteerHome() {
   const links = useStore((s) => s.links);
   // Read the raw list and filter here: a selector that builds a new array makes the store look changed on every render.
   const notices = useStore((s) => s.notices);
+  // Home keeps its scroll position as a tab, so come back up to the "Report sent" banner.
+  const scroll = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (reported) scroll.current?.scrollTo({ y: 0, animated: false });
+  }, [reported]);
   if (!me) return null;
   const moved = notices.filter((n) => n.to === me.id && n.kind === 'moved' && !n.read).slice(0, 1);
 
@@ -30,7 +36,7 @@ export default function VolunteerHome() {
   const mine = incidents.filter((i) => i.reporterId === me.id);
 
   return (
-    <Screen tabs>
+    <Screen tabs scrollRef={scroll}>
       <Header eyebrow={`Volunteer · ${zoneById(me.zoneId)?.name ?? 'Unassigned'}`} title={`Hi ${me.name.split(' ')[0]}`} />
 
       {reported && mine.some((i) => i.ref === reported) && (
