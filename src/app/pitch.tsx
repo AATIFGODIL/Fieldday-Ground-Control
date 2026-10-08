@@ -96,6 +96,8 @@ function useSizes() {
 type Sizes = ReturnType<typeof useSizes>;
 
 const ThemeCtx = createContext<Colors>(PALETTE.light);
+/** Whether this slide is the one on stage (false while it's on its way out). */
+const OnStageCtx = createContext(true);
 const useColors = () => useContext(ThemeCtx);
 
 /** A big number that counts up, in the slide's accent. */
@@ -488,10 +490,12 @@ function IsoMap({ s }: { s: Sizes }) {
 /**
  * The launch film, playing as soon as its slide opens. Advancing the deck
  * counts as a click, so browsers let it play with sound; if one won't, it
- * plays muted with a button to turn the sound on.
+ * plays muted with a button to turn the sound on. When it ends, the deck
+ * goes on to the next slide.
  */
 function LaunchFilm({ s }: { s: Sizes }) {
   const ref = useRef<HTMLVideoElement | null>(null);
+  const onStage = useContext(OnStageCtx);
   const [muted, setMuted] = useState(false);
   useEffect(() => {
     const v = ref.current;
@@ -507,7 +511,16 @@ function LaunchFilm({ s }: { s: Sizes }) {
   if (!WEB) return <Muted s={s}>The launch film plays in the web version of this deck.</Muted>;
   return (
     <View style={{ flex: 1, alignSelf: 'stretch', backgroundColor: '#000' }}>
-      <video ref={ref} src="/launch.mp4" playsInline preload="auto" style={{ width: '100%', height: '100%', display: 'block', objectFit: 'contain', background: '#000' }} />
+      <video
+        ref={ref}
+        src="/launch.mp4"
+        // When the film ends, the deck moves on to the next slide by itself.
+        onEnded={() => {
+          if (onStage) window.dispatchEvent(new Event('pitch:next'));
+        }}
+        playsInline
+        preload="auto"
+        style={{ width: '100%', height: '100%', display: 'block', objectFit: 'contain', background: '#000' }} />
       {muted && (
         <Pressable
           onPress={() => {
@@ -874,9 +887,11 @@ function Layer({ i, s, exiting, dir }: { i: number; s: Sizes; exiting: boolean; 
   });
   return (
     <ThemeCtx.Provider value={PALETTE[SLIDES[i].theme]}>
-      <Animated.View pointerEvents={exiting ? 'none' : 'auto'} style={[StyleSheet.absoluteFill, style]}>
-        <SlideBody i={i} s={s} />
-      </Animated.View>
+      <OnStageCtx.Provider value={!exiting}>
+        <Animated.View pointerEvents={exiting ? 'none' : 'auto'} style={[StyleSheet.absoluteFill, style]}>
+          <SlideBody i={i} s={s} />
+        </Animated.View>
+      </OnStageCtx.Provider>
     </ThemeCtx.Provider>
   );
 }
@@ -981,8 +996,13 @@ export default function Pitch() {
         setNotes((v) => !v);
       }
     };
+    const onNext = () => goRef.current(1);
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('pitch:next', onNext);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pitch:next', onNext);
+    };
   }, []);
 
   const tap = Gesture.Tap()
