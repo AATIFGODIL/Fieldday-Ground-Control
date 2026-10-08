@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@expo/ui": "~57.0.22",
     "expo": "~57.0.27",
     "expo-constants": "~57.0.21",
@@ -24,6 +25,8 @@
     "expo-symbols": "~57.0.3",
     "expo-system-ui": "~57.0.4",
     "expo-web-browser": "~57.0.3",
+    "hono": "^4.13.13",
+    "qrcode-generator": "^2.0.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
