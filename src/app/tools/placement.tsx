@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { Banner, Button, Card, Pill, Row, Screen, Section, Txt } from '@/components/ui/primitives';
-import { SkillColors, UrgencyColors } from '@/constants/theme';
+import { SkillColors, Spacing, UrgencyColors } from '@/constants/theme';
 import { gapsAt } from '@/domain/coverage';
 import { SKILL_SHORT } from '@/domain/types';
 import { useSimNow } from '@/hooks/use-sim-now';
@@ -21,6 +21,10 @@ export default function Placement() {
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [applied, setApplied] = useState<number | null>(null);
+  const scroll = useRef<ScrollView>(null);
+  // Set when a new suggestion arrives; the suggestion scrolls itself into view once it's laid out.
+  const reveal = useRef(false);
+  const [round, setRound] = useState(0);
 
   const gaps = gapsAt(festival, Object.values(volunteers), now);
 
@@ -30,6 +34,8 @@ export default function Placement() {
     setExcluded(new Set());
     setProposal(await proposePlacement());
     setBusy(false);
+    reveal.current = true;
+    setRound((r) => r + 1); // a fresh layout each time, so it always scrolls into view
   };
 
   const chosen = proposal?.moves.filter((m) => !excluded.has(m.volunteerId)) ?? [];
@@ -39,7 +45,7 @@ export default function Placement() {
   for (const m of proposal?.moves ?? []) byZone.set(m.toZoneId, [...(byZone.get(m.toZoneId) ?? []), m]);
 
   return (
-    <Screen>
+    <Screen scrollRef={scroll}>
       <View style={{ gap: 2, paddingRight: 160 }}>
         <Txt variant="label" color={t.tint}>{temperatureC}°C · {Object.values(volunteers).filter((v) => v.role === 'volunteer').length} VOLUNTEERS</Txt>
         <Txt variant="title">Placement</Txt>
@@ -62,7 +68,14 @@ export default function Placement() {
       <Button title={busy ? 'Thinking about placement…' : proposal ? 'Suggest again' : 'Suggest placement'} size="lg" loading={busy} onPress={suggest} />
 
       {proposal && (
-        <>
+        <View
+          key={round}
+          style={{ gap: Spacing.four }}
+          onLayout={(e) => {
+            if (!reveal.current) return;
+            reveal.current = false;
+            scroll.current?.scrollTo({ y: Math.max(0, e.nativeEvent.layout.y - Spacing.three), animated: true });
+          }}>
           {proposal.source === 'rules' && (
             <Banner tone="warn" title="AI placement unavailable — showing a rule-based plan" body={proposal.failReason} />
           )}
@@ -122,7 +135,7 @@ export default function Placement() {
               }}
             />
           )}
-        </>
+        </View>
       )}
       {applied !== null && <Banner tone="ok" title={`Applied ${applied} moves`} body="Volunteers are walking to their new zones on the map." />}
     </Screen>
