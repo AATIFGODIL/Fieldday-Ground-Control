@@ -4,7 +4,7 @@
  * Ground Control's own look: Apple's system type, all-dark slides tinted by
  * chapter (warm through the problem, plum for the solution, blue for the demo), 3D
  * extruded titles, a radio transcript that types itself and cuts out, a tilted
- * 3D festival map with a responder walking to an incident.
+ * 3D festival map with a responder walking to an incident, and the launch film.
  *
  * Motion: lines fade up and unblur, one after another; slides fade out,
  * drifting the way you're going.
@@ -457,6 +457,45 @@ function IsoMap({ s }: { s: Sizes }) {
   );
 }
 
+/**
+ * The launch film, playing as soon as its slide opens. Advancing the deck
+ * counts as a click, so browsers let it play with sound; if one won't, it
+ * plays muted with a button to turn the sound on.
+ */
+function LaunchFilm({ s }: { s: Sizes }) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  const [muted, setMuted] = useState(false);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    v.currentTime = 0;
+    v.play().catch(() => {
+      v.muted = true;
+      setMuted(true);
+      void v.play().catch(() => {});
+    });
+    return () => v.pause();
+  }, []);
+  const w = Math.min(s.width * 0.86, ((s.height * 0.8) * 16) / 9);
+  if (!WEB) return <Muted s={s}>The launch film plays in the web version of this deck.</Muted>;
+  return (
+    <View style={{ alignSelf: 'center', width: w, height: (w * 9) / 16, borderRadius: 22, overflow: 'hidden', backgroundColor: '#000', boxShadow: '0 30px 90px rgba(0,0,0,0.65)' }}>
+      <video ref={ref} src="/launch.mp4" playsInline preload="auto" style={{ width: '100%', height: '100%', display: 'block' }} />
+      {muted && (
+        <Pressable
+          onPress={() => {
+            const v = ref.current;
+            if (v) v.muted = false;
+            setMuted(false);
+          }}
+          style={({ hovered }) => ({ position: 'absolute', right: 20, bottom: 20, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 12, backgroundColor: hovered ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.6)' })}>
+          <Text style={t(18, '700', '#FFFFFF')}>Turn sound on</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
 /* ---------------------------------- slides ---------------------------------- */
 
 interface Slide {
@@ -586,6 +625,14 @@ const SLIDES: Slide[] = [
       </Big>,
     ],
     aside: (s) => <IsoMap s={s} />,
+  },
+  {
+    theme: 'plum',
+    center: true,
+    hasButton: true,
+    notes: 'The launch film plays by itself (30 seconds). When it ends, press → to go on.',
+    raw: [0],
+    lines: (s) => [<LaunchFilm key="film" s={s} />],
   },
   {
     theme: 'dusk',
