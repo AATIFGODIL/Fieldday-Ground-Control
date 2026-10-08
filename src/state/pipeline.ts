@@ -3,7 +3,7 @@
  * designed fallback so the human workflow never stalls on the model.
  */
 import { api } from '@/api/client';
-import { templateBrief } from '@/domain/brief';
+import { briefLevelForDistance, templateBrief } from '@/domain/brief';
 import { guessIncidentType } from '@/domain/classify';
 import { activeRequirements } from '@/domain/coverage';
 import { compassDirection, dist, zoneAt } from '@/domain/geo';
@@ -13,6 +13,7 @@ import { countWith, onShiftIn, STAFF_SKILLS, targetFor, type TargetChange } from
 import { RELATED_RADIUS_M, relatedCandidates } from '@/domain/related';
 import { SKILL_LABELS, type Dispatch, type Incident, type ResponsePlan, type Urgency } from '@/domain/types';
 import type { ScenarioStep } from '@/sim/scenarios';
+import { prepareVoice } from '@/services/speech';
 
 import {
   addRelatedLinks,
@@ -256,12 +257,12 @@ async function runBrief(d: Dispatch) {
     direction,
     temperatureC: s.temperatureC,
   });
-  setBrief(
-    d.id,
-    res.ok
-      ? { ...res.data, source: 'ai' }
-      : templateBrief({ incident: inc, zoneName, plan, message: d.message, role: d.role, from, to: inc.location, distanceM: d.distanceM }),
-  );
+  const brief = res.ok
+    ? ({ ...res.data, source: 'ai' } as const)
+    : templateBrief({ incident: inc, zoneName, plan, message: d.message, role: d.role, from, to: inc.location, distanceM: d.distanceM });
+  setBrief(d.id, brief);
+  // Get the spoken version ready now, so it plays the moment their screen opens.
+  prepareVoice(brief[briefLevelForDistance(d.distanceM)]);
 }
 
 /* --------------------------------- placement --------------------------------- */
