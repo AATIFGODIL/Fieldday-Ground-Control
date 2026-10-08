@@ -117,7 +117,7 @@ export default function Now() {
                     )}
                   </View>
                 </Row>
-                <Button title="Find cover" onPress={() => router.push({ pathname: '/safety/staff', params: { zone: g.zoneId } })} />
+                <Button title="Find cover" onPress={() => router.push({ pathname: '/safety/staff', params: { zone: g.zoneId, at: String(Date.now()) } })} />
               </Card>
               </Appear>
             );

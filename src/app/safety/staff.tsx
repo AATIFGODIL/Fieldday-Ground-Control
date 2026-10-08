@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { ChangePreview, type PendingChange } from '@/components/staffing/change-preview';
@@ -39,7 +39,9 @@ const EXAMPLES = [
  */
 export default function Staff() {
   const t = useTheme();
-  const params = useLocalSearchParams<{ zone?: string }>();
+  // `at` makes each "Find cover" tap a new arrival, even for the same zone.
+  const params = useLocalSearchParams<{ zone?: string; at?: string }>();
+  const arrival = params.zone ? `${params.zone}@${params.at ?? ''}` : undefined;
   const festival = useStore((s) => s.festival);
   const volunteers = useStore((s) => s.volunteers);
   const temp = useStore((s) => s.temperatureC);
@@ -51,16 +53,18 @@ export default function Staff() {
   const [handledZone, setHandledZone] = useState<string | undefined>(undefined);
 
   const propose = (p: Omit<PendingChange, 'key'>) => setPending({ ...p, key: nextKey() });
-  // The change shows at the top of the screen, so glide up to it from wherever it was asked for.
+  // The change card sits at the top. Whenever one opens (a surge, "Find cover", "Just say it")
+  // or closes (approve or cancel, which removes it from under your finger), glide back up to it.
+  // After the render, so the card is already in place and the scroll lands exactly at the top.
   const scroll = useRef<ScrollView>(null);
-  const show = (p: Omit<PendingChange, 'key'>) => {
-    propose(p);
+  const pendingKey = pending?.key;
+  useEffect(() => {
     scroll.current?.scrollTo({ y: 0, animated: true });
-  };
+  }, [pendingKey]);
 
   // Arriving from "Find cover": open that zone and show who could fill it.
-  if (params.zone && params.zone !== handledZone) {
-    setHandledZone(params.zone);
+  if (params.zone && arrival !== handledZone) {
+    setHandledZone(arrival);
     const zone = festival.zones.find((z) => z.id === params.zone);
     if (zone) {
       setOpen(zone.id);
@@ -82,7 +86,7 @@ export default function Staff() {
         </Appear>
       )}
 
-      <AskBox onProposal={show} busy={!!pending} />
+      <AskBox onProposal={propose} busy={!!pending} />
 
       {surges.length > 0 && (
         <Section title="Running now">
@@ -111,7 +115,7 @@ export default function Staff() {
           {SURGES.map((p) => (
             <Pressable
               key={p.id}
-              onPress={() => show({ title: p.title, note: p.note, source: 'preset', changes: resolveSurge(festival, p, temp, all) })}
+              onPress={() => propose({ title: p.title, note: p.note, source: 'preset', changes: resolveSurge(festival, p, temp, all) })}
               style={({ pressed }) => [styles.surge, { backgroundColor: t.backgroundElement, opacity: pressed ? 0.85 : 1 }]}>
               <View style={[styles.tile, { backgroundColor: SURGE_TINT[p.glyph](t) }]}>
                 <Glyph name={p.glyph as GlyphName} size={22} color="#FFFFFF" />
@@ -125,7 +129,7 @@ export default function Staff() {
 
       <Section title="Zones">
         {zones.map((z) => (
-          <ZoneTargets key={z.id} zone={z} open={open === z.id} onToggle={() => setOpen(open === z.id ? null : z.id)} onProposal={show} />
+          <ZoneTargets key={z.id} zone={z} open={open === z.id} onToggle={() => setOpen(open === z.id ? null : z.id)} onProposal={propose} />
         ))}
       </Section>
     </Screen>
