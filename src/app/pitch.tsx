@@ -13,7 +13,7 @@
  * Click the left quarter to go back, anywhere else to go on. Lives at /pitch.
  */
 import { router } from 'expo-router';
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, isValidElement, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type TextStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -117,22 +117,49 @@ const t = (px: number, weight: TextStyle['fontWeight'], color: string, extra?: T
 /* --------------------------------- motion --------------------------------- */
 
 const EASE = Easing.bezier(0.2, 0.8, 0.2, 1);
+/** A long, soft settle, like Apple's own slide builds. */
+const SETTLE = Easing.bezier(0.16, 1, 0.3, 1);
+/** Respect the viewer's "reduce motion" setting: plain fades, no movement or blur. */
+const REDUCE = WEB && typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /** One line of a slide: it fades up and unblurs. `order` staggers the lines 0.14 s apart. */
 function Rise({ order, children, center }: { order: number; children: ReactNode; center?: boolean }) {
   const v = useSharedValue(0);
   useEffect(() => {
-    v.set(withDelay(150 + order * 140, withTiming(1, { duration: 800, easing: EASE })));
+    v.set(withDelay(180 + order * 140, withTiming(1, { duration: 900, easing: SETTLE })));
   }, [v, order]);
   const style = useAnimatedStyle(() => {
     const t = v.get();
+    if (REDUCE) return { opacity: t };
     return {
       opacity: t,
-      transform: [{ translateY: (1 - t) * 36 }],
-      ...(WEB ? { filter: `blur(${(1 - t) * 10}px)` } : {}),
+      transform: [{ translateY: (1 - t) * 28 }],
+      ...(WEB ? { filter: t < 0.995 ? `blur(${(1 - t) * 8}px)` : 'none' } : {}),
     };
   });
   return <Animated.View style={[{ alignSelf: center ? 'center' : 'stretch', alignItems: center ? 'center' : 'flex-start' }, style]}>{children}</Animated.View>;
+}
+
+/**
+ * A headline that slides up from behind an invisible edge, the way Apple's
+ * pages bring in big type. The mask leaves room for 3D extrusion and shadows.
+ */
+function Reveal({ order, children, center }: { order: number; children: ReactNode; center?: boolean }) {
+  const v = useSharedValue(0);
+  useEffect(() => {
+    v.set(withDelay(180 + order * 140, withTiming(1, { duration: 1000, easing: SETTLE })));
+  }, [v, order]);
+  const style = useAnimatedStyle(() => {
+    const t = v.get();
+    if (REDUCE) return { opacity: t };
+    return { opacity: Math.min(1, t * 1.6), transform: [{ translateY: `${(1 - t) * 105}%` }] };
+  });
+  const room = 28;
+  return (
+    <View style={{ alignSelf: center ? 'center' : 'stretch', alignItems: center ? 'center' : 'flex-start', overflow: 'hidden', paddingRight: room, paddingBottom: room, marginRight: -room, marginBottom: -room }}>
+      <Animated.View style={[{ alignItems: center ? 'center' : 'flex-start' }, style]}>{children}</Animated.View>
+    </View>
+  );
 }
 
 /** A number that counts up from zero and always lands on the real value. */
@@ -758,6 +785,102 @@ function OnAir({ s }: { s: Sizes }) {
 
 /* ------------------------------------ deck ------------------------------------ */
 
+/** One slide's content, laid out (lines, aside, or something full-bleed). */
+function SlideBody({ i, s }: { i: number; s: Sizes }) {
+  const slide = SLIDES[i];
+  const lines = slide.lines(s).map((line, n) => {
+    const key = `${i}-${n}`;
+    if (slide.raw?.includes(n)) {
+      return (
+        <View key={key} style={{ alignSelf: 'stretch' }}>
+          {line}
+        </View>
+      );
+    }
+    const headline = isValidElement(line) && (line.type === Big || line.type === Extrude);
+    return headline ? (
+      <Reveal key={key} order={n} center={slide.center}>
+        {line}
+      </Reveal>
+    ) : (
+      <Rise key={key} order={n} center={slide.center}>
+        {line}
+      </Rise>
+    );
+  });
+  const aside = slide.aside?.(s);
+  return (
+    <View
+      style={{
+        flex: 1,
+        paddingHorizontal: slide.full ? 0 : s.pad,
+        paddingVertical: slide.full ? 0 : 56,
+        flexDirection: aside && !s.phone ? 'row' : 'column',
+        alignItems: aside && !s.phone ? 'center' : slide.center ? 'center' : 'flex-start',
+        justifyContent: 'center',
+        gap: aside ? 32 : 0,
+      }}>
+      {slide.full ? (
+        slide.full(s)
+      ) : (
+        <View
+          style={{
+            flex: aside && !s.phone ? 1 : undefined,
+            alignSelf: slide.center ? 'center' : 'stretch',
+            alignItems: slide.center ? 'center' : 'flex-start',
+            // Beside an aside the column fills the slide's height, so centre its lines in it.
+            justifyContent: 'center',
+            gap: clamp(s.width * 0.016, 14, 28),
+          }}>
+          {lines}
+        </View>
+      )}
+      {aside && (
+        <Rise order={lines.length} center>
+          {aside}
+        </Rise>
+      )}
+    </View>
+  );
+}
+
+/**
+ * A slide on the stage. Going forward, the outgoing slide sinks back (smaller,
+ * softer) while the incoming one settles in from just in front; going back
+ * reverses it, so direction always reads in depth. A slide that's leaving can
+ * be called back mid-way and simply turns round.
+ */
+function Layer({ i, s, exiting, dir }: { i: number; s: Sizes; exiting: boolean; dir: number }) {
+  const p = useSharedValue(0);
+  const away = useSharedValue(0);
+  useEffect(() => {
+    if (exiting) {
+      away.set(1);
+      p.set(withTiming(0, { duration: 480, easing: Easing.bezier(0.4, 0, 0.7, 1) }));
+    } else {
+      away.set(0);
+      p.set(withDelay(60, withTiming(1, { duration: 820, easing: SETTLE })));
+    }
+  }, [exiting, p, away]);
+  const style = useAnimatedStyle(() => {
+    const k = 1 - p.get();
+    if (REDUCE) return { opacity: p.get() };
+    const depth = (away.get() ? -1 : 1) * dir * 0.045 * k;
+    return {
+      opacity: p.get(),
+      transform: [{ scale: 1 + depth }],
+      ...(WEB ? { filter: k > 0.005 ? `blur(${k * 8}px)` : 'none' } : {}),
+    };
+  });
+  return (
+    <ThemeCtx.Provider value={PALETTE[SLIDES[i].theme]}>
+      <Animated.View pointerEvents={exiting ? 'none' : 'auto'} style={[StyleSheet.absoluteFill, style]}>
+        <SlideBody i={i} s={s} />
+      </Animated.View>
+    </ThemeCtx.Provider>
+  );
+}
+
 export default function Pitch() {
   const s = useSizes();
   const [index, setIndex] = useState(() => {
@@ -770,18 +893,15 @@ export default function Pitch() {
   const slide = SLIDES[index];
   const colors = PALETTE[slide.theme];
 
-  // Leaving: the slide fades out, drifting the way you're going and blurring.
-  const leave = useSharedValue(0);
-  const dir = useSharedValue(1);
-  const busy = useSharedValue(false);
-  const sectionStyle = useAnimatedStyle(() => {
-    const p = leave.get();
-    return {
-      opacity: 1 - p,
-      transform: [{ translateY: p * (dir.get() > 0 ? -24 : 24) }],
-      ...(WEB ? { filter: `blur(${p * 8}px)` } : {}),
-    };
-  });
+  // The slide that's on its way out, and which way we're going.
+  const [leaving, setLeaving] = useState<number | null>(null);
+  const [dir, setDir] = useState(1);
+  // Once the outgoing slide has faded, take it off the stage.
+  useEffect(() => {
+    if (leaving === null) return;
+    const done = setTimeout(() => setLeaving(null), 560);
+    return () => clearTimeout(done);
+  }, [leaving, index]);
 
   // The background eases from the last slide's colour to this one's.
   const bgFrom = useSharedValue(colors.bg);
@@ -792,7 +912,7 @@ export default function Pitch() {
     bgFrom.set(lastBg.current);
     bgTo.set(colors.bg);
     bgP.set(0);
-    bgP.set(withTiming(1, { duration: 550, easing: EASE }));
+    bgP.set(withTiming(1, { duration: 700, easing: SETTLE }));
     lastBg.current = colors.bg;
   }, [colors.bg, bgFrom, bgTo, bgP]);
   const bgStyle = useAnimatedStyle(() => ({ backgroundColor: interpolateColor(bgP.get(), [0, 1], [bgFrom.get(), bgTo.get()]) }));
@@ -804,17 +924,13 @@ export default function Pitch() {
   }, [index, progress]);
   const barStyle = useAnimatedStyle(() => ({ width: `${progress.get() * 100}%` }));
 
+  // Never locked: pressing again mid-transition just carries on from there.
   const go = (delta: number) => {
     const next = clamp(index + delta, 0, SLIDES.length - 1);
-    if (next === index || busy.get()) return;
-    busy.set(true);
-    dir.set(delta);
-    leave.set(withTiming(1, { duration: 250, easing: EASE }));
-    setTimeout(() => {
-      setIndex(next);
-      leave.set(0);
-      busy.set(false);
-    }, 260);
+    if (next === index) return;
+    setDir(delta > 0 ? 1 : -1);
+    setLeaving(index);
+    setIndex(next);
   };
 
   // Keep the slide in the address (/pitch#10), so Back from the demo returns here.
@@ -881,57 +997,17 @@ export default function Pitch() {
       else if (e.translationX > 60) go(-1);
     });
 
-  const lines = slide.lines(s).map((line, i) =>
-    slide.raw?.includes(i) ? (
-      <View key={`${index}-${i}`} style={{ alignSelf: 'stretch' }}>
-        {line}
-      </View>
-    ) : (
-      <Rise key={`${index}-${i}`} order={i} center={slide.center}>
-        {line}
-      </Rise>
-    ),
-  );
-  const aside = slide.aside?.(s);
+  const layers = leaving !== null && leaving !== index ? [leaving, index] : [index];
 
   return (
     <ThemeCtx.Provider value={colors}>
       <Animated.View style={[{ flex: 1, overflow: 'hidden' }, bgStyle]}>
         <GestureDetector gesture={Gesture.Race(swipe, tap)}>
-          <Animated.View
-            style={[
-              {
-                flex: 1,
-                paddingHorizontal: slide.full ? 0 : s.pad,
-                paddingVertical: slide.full ? 0 : 56,
-                flexDirection: aside && !s.phone ? 'row' : 'column',
-                alignItems: aside && !s.phone ? 'center' : slide.center ? 'center' : 'flex-start',
-                justifyContent: 'center',
-                gap: aside ? 32 : 0,
-              },
-              sectionStyle,
-            ]}>
-            {slide.full ? (
-              slide.full(s)
-            ) : (
-              <View
-                style={{
-                  flex: aside && !s.phone ? 1 : undefined,
-                  alignSelf: slide.center ? 'center' : 'stretch',
-                  alignItems: slide.center ? 'center' : 'flex-start',
-                  // Beside an aside the column fills the slide's height, so centre its lines in it.
-                  justifyContent: 'center',
-                  gap: clamp(s.width * 0.016, 14, 28),
-                }}>
-                {lines}
-              </View>
-            )}
-            {aside && (
-              <Rise order={lines.length} center>
-                {aside}
-              </Rise>
-            )}
-          </Animated.View>
+          <View style={{ flex: 1 }}>
+            {layers.map((i) => (
+              <Layer key={i} i={i} s={s} exiting={i !== index} dir={dir} />
+            ))}
+          </View>
         </GestureDetector>
 
         {WEB && !full && (
