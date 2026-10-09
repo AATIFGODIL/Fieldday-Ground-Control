@@ -889,6 +889,105 @@ function Rings({ s }: { s: Sizes }) {
   );
 }
 
+/* --- 3. briefed on the move --- */
+
+const BRIEF_STEP = 2200;
+const BRIEF_SAY = [
+  'Man collapsed by the water taps. Likely heat. Go now.',
+  'He’s red and confused. Priya is with him. Bring water.',
+  'Head past the Food Court, then left at the taps. Call 000 if he stops responding.',
+];
+
+/** Sam's brief, read into his earpiece: it grows with the walk. */
+function BriefMock() {
+  const level = useStep(3, BRIEF_STEP);
+  const now = useNow(90);
+  const dist = [70, 400, 900][level];
+  const mins = [1, 5, 11][level];
+  return (
+    <View style={{ flex: 1, paddingTop: 66, paddingHorizontal: 18 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: 'rgba(255,69,58,0.18)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: FEATURE_RED }} />
+        <Text style={t(14, '700', '#FF8A80')}>Critical</Text>
+      </View>
+      <Text style={[t(32, '800', '#FFFFFF'), { marginTop: 12 }]}>You’re needed</Text>
+      <Text style={t(15, '500', IOS_SECONDARY)}>Heat collapse · Water Station</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 14 }}>
+        <Text style={[t(46, '800', VIOLET), { fontVariant: ['tabular-nums'] }]}>{dist} m</Text>
+        <Text style={t(17, '500', IOS_SECONDARY)}>· {mins} min walk</Text>
+      </View>
+      <View style={{ marginTop: 16, borderRadius: 22, padding: 16, gap: 12, backgroundColor: IOS_GREY }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={t(13, '700', IOS_SECONDARY, { letterSpacing: 0.4, textTransform: 'uppercase' })}>Your brief</Text>
+          <View style={{ backgroundColor: 'rgba(167,139,250,0.16)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+            <Text style={t(13, '700', VIOLET)}>{['Short', 'Medium', 'Full'][level]}</Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
+            <Glyph name="volume" size={22} color="#FFFFFF" />
+          </View>
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3, height: 32 }}>
+            {Array.from({ length: 30 }, (_, i) => (
+              <View key={i} style={{ width: 3.5, borderRadius: 2, backgroundColor: VIOLET, height: 4 + 24 * Math.abs(Math.sin(now / 160 + i * 1.7) * Math.sin(now / 410 + i * 0.6)) }} />
+            ))}
+          </View>
+          <Text style={t(13, '600', VIOLET)}>In your ear</Text>
+        </View>
+        <View style={{ gap: 6 }}>
+          {BRIEF_SAY.slice(0, level + 1).map((line) => (
+            <Text key={line} style={t(17, '500', '#F2F2F7')}>
+              {line}
+            </Text>
+          ))}
+        </View>
+      </View>
+      <View style={{ position: 'absolute', left: 18, right: 18, bottom: 40 }}>
+        <PhoneButton title="I’m on my way" />
+      </View>
+    </View>
+  );
+}
+
+/** The three brief lengths, lighting up in step with the phone. */
+function BriefRows({ s }: { s: Sizes }) {
+  const c = useColors();
+  const level = useStep(3, BRIEF_STEP);
+  const rows = [
+    { when: 'Under 100 m', what: 'Short' },
+    { when: 'A few minutes away', what: 'Medium' },
+    { when: 'A longer walk', what: 'Full' },
+  ];
+  return (
+    <View style={{ gap: 12, alignSelf: 'stretch', maxWidth: s.phone ? undefined : 640, marginTop: 6 }}>
+      {rows.map((r, i) => {
+        const on = i === level;
+        return (
+          <View
+            key={r.what}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderRadius: 999,
+              paddingHorizontal: 28,
+              minHeight: clamp(s.width * 0.045, 58, 78),
+              borderWidth: 2,
+              borderColor: on ? c.accent : 'transparent',
+              backgroundColor: on ? 'rgba(201,182,242,0.16)' : c.fill,
+            }}>
+            <Text style={t(clamp(s.width * 0.015, 18, 26), '600', on ? c.ink : c.muted)}>{r.when}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Glyph name="volume" size={20} color={on ? c.accent : c.grey} />
+              <Text style={t(clamp(s.width * 0.015, 18, 26), '800', on ? c.accent : c.grey)}>{r.what}</Text>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 /* --- 4. conditions change --- */
 
 const DAY_STEP = 2600;
@@ -1108,21 +1207,21 @@ const SLIDES: Slide[] = [
   {
     theme: 'plum',
     notes:
-      'Next: pattern-based staffing suggestions that spot rising altercations and recommend security or de-escalation-trained volunteers before things escalate. Real multi-device sync so every phone shares one live picture; today’s demo runs on one device with a role switcher. Proper sign-in and Fieldday rostering integration. Native distribution through TestFlight and Google Play, with offline-first reporting for patchy festival signal. Optional Whisper transcription at scale where the accuracy justifies the cost.',
+      'Walking and reading a brief at the same time doesn’t work. So the AI speaks it into their earpiece, and sizes it to the walk: short if they’re close, longer if they’ve got further to go, so they’re briefed by the time they arrive.',
     lines: (s) => [
-      <Big key="h" s={s} size="h2">
-        What’s next for Ground Control
+      <Big key="h" s={s} size="h2" max={0.5}>
+        Briefed on the move.
       </Big>,
-      <CardRow key="top" s={s} from={1} items={[
-        { title: 'Spot patterns early', text: 'Rising altercations? Suggest more security or de-escalation-trained crew.' },
-        { title: 'One live picture', text: 'Sync every crew member’s phone. Today’s demo uses one device and a role switcher.' },
-        { title: 'Sign in. Join the roster.', text: 'Proper sign-in and integration with Fieldday’s rostering.' },
-      ]} />,
-      <CardRow key="bottom" s={s} from={4} items={[
-        { title: 'Built for the field', text: 'TestFlight and Google Play builds, with offline-first reporting for patchy signal.' },
-        { title: 'Optional Whisper', text: 'Transcription at scale, where better accuracy is worth the cost.' },
-      ]} />,
+      <Muted key="m" s={s} max={0.45}>
+        Read into their earpiece, sized to the walk.
+      </Muted>,
+      <BriefRows key="rows" s={s} />,
     ],
+    aside: (s) => (
+      <PhoneMock s={s} time="14:03">
+        <BriefMock />
+      </PhoneMock>
+    ),
   },
   {
     theme: 'dusk',
@@ -1169,24 +1268,22 @@ const SLIDES: Slide[] = [
     ],
   },
   {
-    theme: 'ink',
+    theme: 'plum',
     notes:
-      'What we left out, on purpose. No chatbot: Mo needs decisions, not a conversation. No auto-dispatch: AI never sends anyone on its own. No freehand zone drawing: preset zones Mo can adjust are faster on the day.',
-    raw: [1],
+      'Next: pattern-based staffing suggestions that spot rising altercations and recommend security or de-escalation-trained volunteers before things escalate. Real multi-device sync so every phone shares one live picture; today’s demo runs on one device with a role switcher. Proper sign-in and Fieldday rostering integration. Native distribution through TestFlight and Google Play, with offline-first reporting for patchy festival signal. Optional Whisper transcription at scale where the accuracy justifies the cost.',
     lines: (s) => [
-      <Big key="h" s={s} size="h2" max={0.8}>
-        What we left out, <Grey>on purpose.</Grey>
+      <Big key="h" s={s} size="h2">
+        What’s next for Ground Control
       </Big>,
-      <CardRow
-        key="c"
-        s={s}
-        from={1}
-        items={[
-          { title: 'A chatbot', text: 'Mo needs decisions, not a conversation.' },
-          { title: 'Auto-dispatch', text: 'AI never sends anyone on its own.' },
-          { title: 'Freehand zones', text: 'Preset zones Mo can adjust are faster on the day.' },
-        ]}
-      />,
+      <CardRow key="top" s={s} from={1} items={[
+        { title: 'Spot patterns early', text: 'Rising altercations? Suggest more security or de-escalation-trained crew.' },
+        { title: 'One live picture', text: 'Sync every crew member’s phone. Today’s demo uses one device and a role switcher.' },
+        { title: 'Sign in. Join the roster.', text: 'Proper sign-in and integration with Fieldday’s rostering.' },
+      ]} />,
+      <CardRow key="bottom" s={s} from={4} items={[
+        { title: 'Built for the field', text: 'TestFlight and Google Play builds, with offline-first reporting for patchy signal.' },
+        { title: 'Optional Whisper', text: 'Transcription at scale, where better accuracy is worth the cost.' },
+      ]} />,
     ],
   },
   {
