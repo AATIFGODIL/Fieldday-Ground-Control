@@ -17,6 +17,7 @@ import {
   setAppearance,
   type Appearance,
   formatClock,
+  declineLatestDispatch,
   markStepDone,
   resetScenario,
   safetyLeadId,
@@ -70,6 +71,8 @@ export default function Demo() {
     } else if (step.kind === 'wander') {
       startWander(step.volunteerId);
       markStepDone(step.id);
+    } else if (step.kind === 'decline') {
+      if (declineLatestDispatch()) markStepDone(step.id);
     } else if (step.kind === 'report') {
       if (auto) {
         setBusy(step.id);
@@ -103,6 +106,10 @@ export default function Demo() {
         <Card onPress={() => startTour('busy')}>
           <Txt variant="heading">When Mo is busy</Txt>
           <Txt variant="caption">A critical report and no answer from Mo. After 30 seconds the location lead can step in, and it’s logged.</Txt>
+        </Card>
+        <Card onPress={() => startTour('decline')}>
+          <Txt variant="heading">When a volunteer can’t go</Txt>
+          <Txt variant="caption">The person sent says no. Ground Control lines up the next nearest first-aider and Mo approves them in one tap.</Txt>
         </Card>
       </Section>
 

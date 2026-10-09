@@ -16,7 +16,9 @@ export type ScenarioStep =
       /** The urgency the scripted volunteer confirms when the step is auto-run. */
       confirmUrgency: Urgency;
     }
-  | { kind: 'wander'; id: string; label: string; detail: string; volunteerId: string };
+  | { kind: 'wander'; id: string; label: string; detail: string; volunteerId: string }
+  /** Whoever was last sent says they can't go (run it after a response is approved). */
+  | { kind: 'decline'; id: string; label: string; detail: string };
 
 export interface Scenario {
   id: ScenarioId;
@@ -57,6 +59,12 @@ export const SCENARIOS: Record<ScenarioId, Scenario> = {
         transcript:
           "I need help at the water station, a guy just collapsed right by the taps. He's really red and sweaty and he's confused, not making sense when I talk to him. I think it's the heat. His mate is here with him.",
         confirmUrgency: 'critical',
+      },
+      {
+        kind: 'decline',
+        id: 'heat-decline',
+        label: 'The responder can’t go',
+        detail: 'After Mo approves, the person sent says they can’t go. The next nearest is lined up for Mo to approve.',
       },
       {
         kind: 'wander',

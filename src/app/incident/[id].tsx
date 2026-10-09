@@ -222,14 +222,30 @@ export default function IncidentScreen() {
           )}
           {incident.status === 'suggested' && !editing && incident.suggestion ? (
             <Appear>
-            <Card tone="ai">
-              <Row>
-                <Glyph name="sparkle" size={18} color={t.ai} />
-                <Txt variant="label" color={t.ai} style={{ flex: 1 }}>
-                  AI suggestion · you decide
-                </Txt>
-                {edited && <Pill label="Edited" tone="accent" />}
-              </Row>
+            <Card tone={incident.suggestion.source === 'rules' ? 'strong' : 'ai'}>
+              {incident.suggestion.source === 'rules' ? (
+                // Someone said they can't go: Ground Control has lined up the next nearest.
+                <>
+                  <Row>
+                    <Glyph name="users" size={18} color={t.accent} />
+                    <Txt variant="label" color={t.accent} style={{ flex: 1 }}>
+                      Next nearest · you decide
+                    </Txt>
+                    {edited && <Pill label="Edited" tone="accent" />}
+                  </Row>
+                  <Txt variant="strong">
+                    {(incident.declinedBy ?? []).map((id) => useStore.getState().volunteers[id]?.name ?? 'Someone').join(' and ')} can’t go.
+                  </Txt>
+                </>
+              ) : (
+                <Row>
+                  <Glyph name="sparkle" size={18} color={t.ai} />
+                  <Txt variant="label" color={t.ai} style={{ flex: 1 }}>
+                    AI suggestion · you decide
+                  </Txt>
+                  {edited && <Pill label="Edited" tone="accent" />}
+                </Row>
+              )}
               <PlanView plan={plan!} candidates={incident.candidates} onChange={(p) => setDraft({ base: incident.suggestion!, plan: p })} />
               {dupHint}
               <Button
@@ -284,7 +300,7 @@ export default function IncidentScreen() {
           {isLead && incident.status === 'approved' && (
             <View style={{ gap: Spacing.two }}>
               <Button title="Mark as resolved" onPress={() => resolveIncident(incident.id)} />
-              {mine.some((d) => d.status === 'declined') && (
+              {mine.some((d) => d.status === 'declined') && mine.every((d) => d.status === 'declined') && (
                 <Button title="Send someone else" variant="secondary" onPress={() => reopenIncident(incident.id)} />
               )}
             </View>

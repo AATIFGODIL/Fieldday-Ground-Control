@@ -106,6 +106,24 @@ describe('matching (scenario 1)', () => {
     });
     expect(candidates.map((c) => c.volunteerId)).not.toContain('v-sam');
   });
+
+  it('never suggests someone who said they can’t go, and lines up the next first-aider', () => {
+    const { volunteers, positions } = freshRoster();
+    const roster = volunteers.map((v) =>
+      v.id === 'v-jordan' || v.id === 'v-mei' ? { ...v, status: 'no_show' as const } : v,
+    );
+    const candidates = pickCandidates(baseIncident, {
+      festival,
+      volunteers: roster,
+      positionOf: (id) => positions[id],
+      busyIds: new Set(),
+      excludeIds: new Set(['v-sam']),
+      now: at(14),
+    });
+    expect(candidates.map((c) => c.volunteerId)).not.toContain('v-sam');
+    expect(candidates[0].tier).toBe('primary');
+    expect(candidates[0].skills).toContain('first_aid');
+  });
 });
 
 describe('escalation', () => {
@@ -125,6 +143,12 @@ describe('escalation', () => {
   it('holds location leads for 2 minutes on non-critical incidents', () => {
     expect(canApprove(raj, fight, [], fight.createdAt + 119_000).allowed).toBe(false);
     expect(canApprove(raj, fight, [], fight.createdAt + 120_000)).toEqual({ allowed: true, escalated: true });
+  });
+
+  it('restarts the lead’s window when the incident starts waiting again (someone couldn’t go)', () => {
+    const critical = { ...fight, urgency: 'critical' as const, status: 'suggested' as const, awaitingSince: fight.createdAt + 300_000 };
+    expect(canApprove(raj, critical, [], critical.awaitingSince + 29_000).allowed).toBe(false);
+    expect(canApprove(raj, critical, [], critical.awaitingSince + 30_000)).toEqual({ allowed: true, escalated: true });
   });
 
   it('holds location leads for 30 seconds on critical incidents', () => {

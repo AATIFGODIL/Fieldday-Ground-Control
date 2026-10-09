@@ -536,14 +536,16 @@ export function DispatchProgress({ d }: { d: Dispatch }) {
           <Avatar name={v?.name} size={40} inverted={d.status === 'on_scene'} />
           <View>
             <Txt variant="strong">{v?.name}</Txt>
-            <Txt variant="caption">{d.status === 'on_scene' ? 'Arrived' : `${remaining} m to go`}</Txt>
+            <Txt variant="caption">{d.status === 'on_scene' ? 'Arrived' : d.status === 'declined' ? 'Said they can’t go' : `${remaining} m to go`}</Txt>
           </View>
         </Row>
         <Pill label={statusText} tone={d.status === 'on_scene' ? 'success' : d.status === 'declined' ? undefined : 'accent'} />
       </Row>
-      <View style={[styles.track, { backgroundColor: t.backgroundSelected }]}>
-        <View style={[styles.fill, { width: `${pct * 100}%`, backgroundColor: d.status === 'on_scene' ? t.success : t.accent }]} />
-      </View>
+      {d.status !== 'declined' && (
+        <View style={[styles.track, { backgroundColor: t.backgroundSelected }]}>
+          <View style={[styles.fill, { width: `${pct * 100}%`, backgroundColor: d.status === 'on_scene' ? t.success : t.accent }]} />
+        </View>
+      )}
     </View>
   );
 }
@@ -557,7 +559,7 @@ export function IncidentLog({ incidentId }: { incidentId: string }) {
         <View key={a.id} style={{ gap: 2 }}>
           <Txt variant="label">{formatClock(a.at)}</Txt>
           <Txt variant="body">
-            <Txt variant="strong">{a.actorName}</Txt> {a.action.charAt(0).toLowerCase() + a.action.slice(1)}
+            <Txt variant="strong">{a.actorName}</Txt> {/^[A-Z]{2}/.test(a.action) ? a.action : a.action.charAt(0).toLowerCase() + a.action.slice(1)}
           </Txt>
         </View>
       ))}

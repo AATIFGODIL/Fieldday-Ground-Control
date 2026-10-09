@@ -201,15 +201,20 @@ export default function DispatchScreen() {
           ) : (
             <Button title="I’m there" size="lg" onPress={() => setDispatchStatus(d.id, 'on_scene')} />
           )}
+          {/* Saying no is a proper choice, not a hidden link: Mo is told and the next nearest is lined up for him. */}
           <Button
             title="I can’t go"
-            variant="ghost"
+            variant="secondary"
+            size="lg"
             onPress={() => {
               stopSpeaking();
               setDispatchStatus(d.id, 'declined');
               router.back();
             }}
           />
+          <Txt variant="caption" style={{ textAlign: 'center' }}>
+            If you can’t, Mo is told straight away and the next nearest person is lined up.
+          </Txt>
         </View>
       )}
       {there && (

@@ -56,6 +56,11 @@ First launch shows three intro screens, then **Show me how it works** starts the
 2. As **Grace**, the Water Station lead, a countdown runs (sped up); after 30 seconds Grace can approve.
 3. Mo gets a "Someone stepped in for you" card, and the history records who decided.
 
+**Story 4: When a volunteer can't go**
+1. Mo approves the nearest first-aider for the collapse.
+2. As that responder, tap **I can't go** on the "You're needed" screen.
+3. Back as **Mo**: Ground Control has already lined up the next nearest person with the same skills ("Sam can't go. Send Zara instead"). Mo approves in one tap; the zone lead's 30 s / 2 min fallback restarts from the decline. The history shows who said no and who went instead.
+
 ## How it works
 
 ```

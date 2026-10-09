@@ -30,6 +30,8 @@ export interface MatchContext {
   positionOf: PositionLookup;
   /** Volunteers already committed to an active dispatch. */
   busyIds: Set<string>;
+  /** Volunteers who've said they can't go to this incident. */
+  excludeIds?: Set<string>;
   now: number;
 }
 
@@ -54,6 +56,7 @@ export function pickCandidates(
       v.status === 'checked_in' &&
       v.id !== incident.reporterId &&
       !ctx.busyIds.has(v.id) &&
+      !ctx.excludeIds?.has(v.id) &&
       isAvailableNow(v, ctx.now) &&
       ctx.positionOf(v.id) !== undefined,
   );

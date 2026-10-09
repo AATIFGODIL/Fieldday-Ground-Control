@@ -9,8 +9,8 @@ import { create } from 'zustand';
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
 
 import { compassDirection, isOnSite, pointInPolygon } from '@/domain/geo';
-import { canApprove, canResolveLinks } from '@/domain/escalation';
-import { isAvailableNow, pickCandidates, WALK_SPEED_MPS } from '@/domain/matching';
+import { canApprove, canResolveLinks, escalationUnlocksAt } from '@/domain/escalation';
+import { isAvailableNow, pickCandidates, RESPONSE_SKILLS, WALK_SPEED_MPS } from '@/domain/matching';
 import { findPath, pointAlong, routeDistance } from '@/domain/pathfinding';
 import { gapsAt } from '@/domain/coverage';
 import type { PlacementMove } from '@/domain/placement';
@@ -769,6 +769,7 @@ export function refreshCandidates(incidentId: string) {
       volunteers: Object.values(s.volunteers),
       positionOf: (id) => sharedPosition(get(), id),
       busyIds: busyVolunteerIds(),
+      excludeIds: new Set(inc.declinedBy ?? []),
       now: simNow(),
     }),
   });
@@ -810,7 +811,7 @@ export function approve(incidentId: string, plan: ResponsePlan): { error: string
   set({ dispatches: [...get().dispatches, ...dispatches] });
 
   audit(
-    `Approved ${plan.source === 'ai' ? 'AI-suggested' : 'manual'} response${check.escalated ? ' (escalated: safety lead did not respond in time)' : ''}`,
+    `Approved ${plan.source === 'ai' ? 'AI-suggested' : plan.source === 'rules' ? 'replacement' : 'manual'} response${check.escalated ? ' (escalated: safety lead did not respond in time)' : ''}`,
     { incidentId, detail: plan.assignments.map((a) => `${s.volunteers[a.volunteerId]?.name} — ${a.role}`).join('; ') },
   );
 
@@ -878,16 +879,7 @@ export function setDispatchStatus(dispatchId: string, status: DispatchStatus, ac
   if (status === 'declined') {
     const { [d.volunteerId]: _, ...movements } = get().movements;
     set({ movements });
-    notify(
-      {
-        to: inc?.approval?.byId ?? safetyLeadId(),
-        kind: 'info',
-        title: `${v?.name} can't attend ${inc?.ref}`,
-        body: 'Choose another responder from the incident screen.',
-        incidentId: d.incidentId,
-      },
-      { phone: { title: `${firstName(v?.name)} can’t go`, body: 'Pick someone else.' } },
-    );
+    lineUpReplacement(d);
   }
   if (status === 'on_scene' && inc) {
     notify(
@@ -895,6 +887,72 @@ export function setDispatchStatus(dispatchId: string, status: DispatchStatus, ac
       { phone: { title: `${firstName(v?.name)} is there`, body: `${INCIDENT_TYPE_LABELS[inc.type]} · ${zoneById(inc.zoneId)?.name}` } },
     );
   }
+}
+
+/**
+ * Someone can't go. Line up the next nearest person with the right skills
+ * and put them in front of Mo to approve: nobody is sent without a human
+ * saying yes. The escalation clock starts again from now, so if Mo doesn't
+ * answer this one either, the zone lead can step in.
+ */
+function lineUpReplacement(d: Dispatch) {
+  const inc = get().incidents.find((i) => i.id === d.incidentId);
+  if (!inc || inc.status === 'resolved' || inc.status === 'merged') return;
+  const who = get().volunteers[d.volunteerId];
+  patchIncident(inc.id, { declinedBy: [...new Set([...(inc.declinedBy ?? []), d.volunteerId])] });
+  refreshCandidates(inc.id);
+  const fresh = get().incidents.find((i) => i.id === inc.id)!;
+  // Like for like: someone with the skill the decliner was sent for, nearest first.
+  const needed = RESPONSE_SKILLS[inc.type];
+  const theirSkills = (who?.skills ?? []).filter((k) => needed.primary.includes(k) || needed.support.includes(k));
+  const next =
+    fresh.candidates.find((c) => c.skills.some((k) => theirSkills.includes(k))) ??
+    fresh.candidates.find((c) => c.tier === 'primary') ??
+    fresh.candidates[0];
+  const now = simNow();
+  set({ escalationNotified: { ...get().escalationNotified, [inc.id]: false } });
+  const title = `${who?.name} can't attend ${inc.ref}`;
+  const lead = zoneLeadId(inc.zoneId);
+
+  if (!next) {
+    const reason = `${who?.name} can’t go, and nobody else with the right skills is free right now.`;
+    patchIncident(inc.id, { status: 'no_suggestion', suggestion: undefined, suggestionFailReason: reason, awaitingSince: now });
+    audit(`Found nobody else free with the right skills after ${who?.name} couldn't attend`, { actorId: 'system', incidentId: inc.id });
+    notify({ to: safetyLeadId(), kind: 'no_suggestion', title, body: 'Nobody else with the right skills is free. Choose someone on the incident screen.', incidentId: inc.id });
+    if (lead) notify({ to: lead, kind: 'no_suggestion', title, body: 'Nobody else with the right skills is free.', incidentId: inc.id });
+    return;
+  }
+
+  const base = inc.approvedPlan ?? inc.suggestion;
+  const shared = next.skills.filter((k) => theirSkills.includes(k));
+  const skills = (shared.length ? shared : next.matchedSkills).map((k) => SKILL_LABELS[k].toLowerCase()).join(', ');
+  const plan: ResponsePlan = {
+    summary: `Send ${next.name} instead of ${who?.name}`,
+    reasoning: `${firstName(who?.name)} can’t go. ${next.name} is the next nearest${skills ? ` with ${skills}` : ''}, ${next.distanceM} m away (about ${next.etaMin} min).`,
+    assignments: [{ volunteerId: next.volunteerId, role: d.role, message: d.message }],
+    whatToExpect: base?.whatToExpect ?? '',
+    whoToFind: base?.whoToFind ?? '',
+    source: 'rules',
+  };
+  patchIncident(inc.id, { status: 'suggested', suggestion: plan, suggestionFailReason: undefined, awaitingSince: now });
+  audit(`Lined up ${next.name} as the next nearest after ${who?.name} couldn't attend (awaiting approval)`, { actorId: 'system', incidentId: inc.id, detail: plan.reasoning });
+  const body = `${next.name} is the next nearest (${next.distanceM} m). Approve to send them.`;
+  notify(
+    { to: safetyLeadId(), kind: 'incident', title, body, incidentId: inc.id },
+    { phone: { title: `${firstName(who?.name)} can’t go`, body: `Send ${firstName(next.name)} instead?` } },
+  );
+  if (lead) notify({ to: lead, kind: 'incident', title, body, incidentId: inc.id });
+}
+
+/** Demo: on the newest incident, the first person sent who hasn't arrived says they can't go. Returns false if nobody's on the way. */
+export function declineLatestDispatch(): boolean {
+  const s = get();
+  const live = s.dispatches.filter((x) => x.status === 'notified' || x.status === 'acknowledged');
+  const newest = s.incidents.find((i) => live.some((x) => x.incidentId === i.id));
+  const d = live.find((x) => x.incidentId === newest?.id);
+  if (!d) return false;
+  setDispatchStatus(d.id, 'declined');
+  return true;
 }
 
 /** Reopen an approved incident so another responder can be chosen. */
@@ -1004,8 +1062,7 @@ export function tick(dtRealMs: number) {
   // 3. Escalation windows opening for location leads.
   for (const inc of after.incidents) {
     if ((inc.status !== 'suggested' && inc.status !== 'no_suggestion') || after.escalationNotified[inc.id]) continue;
-    const window = inc.urgency === 'critical' ? 30_000 : 120_000;
-    if (now - inc.createdAt >= window) {
+    if (now >= escalationUnlocksAt(inc)) {
       set({ escalationNotified: { ...get().escalationNotified, [inc.id]: true } });
       const lead = zoneLeadId(inc.zoneId);
       if (lead) {

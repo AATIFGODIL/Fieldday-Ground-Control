@@ -198,7 +198,8 @@ export interface ResponsePlan {
   assignments: Assignment[];
   whatToExpect: string;
   whoToFind: string;
-  source: 'ai' | 'manual';
+  /** 'rules': picked by Ground Control's own matching, e.g. the next nearest when someone can't go. */
+  source: 'ai' | 'manual' | 'rules';
   authorId?: string;
 }
 
@@ -237,6 +238,10 @@ export interface Incident {
   approvedPlan?: ResponsePlan;
   approval?: Approval;
   mergedInto?: string;
+  /** Volunteers who said they can't go. They're never suggested for this incident again. */
+  declinedBy?: string[];
+  /** When this incident last started waiting for an approval (a decline restarts it). Defaults to createdAt. */
+  awaitingSince?: number;
 }
 
 export interface RelatedLink {

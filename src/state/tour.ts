@@ -12,8 +12,10 @@ import { runScriptedReport } from './pipeline';
 import { resetScenario, setScriptedTranscript, setSpeed, signInAs, triggerNoShows, useStore, type State } from './store';
 
 export interface Beat {
-  /** Whose phone you're holding for this beat. */
+  /** Whose phone you're holding for this beat ('' = whoever was sent last). */
   as: string;
+  /** Pick whose phone it is once the beat starts (overrides `as`). */
+  who?: (s: State) => string | undefined;
   /** Where to take you. A function so it can point at things that exist by then. */
   route?: (s: State) => Href | null;
   title: string;
@@ -34,7 +36,12 @@ const MO = 'v-kim';
 const HEAT = SCENARIOS.heat;
 const report = (id: string) => HEAT.steps.find((x) => x.id === id) as Extract<(typeof HEAT.steps)[number], { kind: 'report' }>;
 
-export type TourId = 'heat' | 'fight' | 'busy';
+export type TourId = 'heat' | 'fight' | 'busy' | 'decline';
+
+/** The first person sent to the latest incident (the nearest match), and whether anyone has said they can't go. */
+const firstDispatch = (s: State) => s.dispatches.find((d) => d.incidentId === latest(s)?.id);
+const latestDeclined = (s: State) => !!latest(s)?.declinedBy?.length;
+const incidentRoute = (s: State): Href => (latest(s) ? { pathname: '/incident/[id]', params: { id: latest(s).id } } : '/safety');
 
 export const TOURS: Record<TourId, { title: string; scenario: ScenarioId; beats: Beat[] }> = {
   heat: {
@@ -178,6 +185,55 @@ export const TOURS: Record<TourId, { title: string; scenario: ScenarioId; beats:
         route: () => '/safety',
         title: 'Mo is told',
         body: 'Mo sees that Grace approved it. The history shows who decided and when, so nothing happens without a name on it.',
+        next: 'One more story',
+      },
+    ],
+  },
+  decline: {
+    title: 'When a volunteer can’t go',
+    scenario: 'heat',
+    beats: [
+      {
+        as: MO,
+        route: () => '/safety',
+        enter: async () => {
+          triggerNoShows(['v-jordan', 'v-mei']);
+          await runScriptedReport(report('heat-report'));
+        },
+        title: 'A collapse at the Water Station',
+        body: 'Priya has just reported it. Ground Control has already found the nearest free first-aider for Mo.',
+        next: 'Next',
+      },
+      {
+        as: MO,
+        route: incidentRoute,
+        title: 'Mo sends them',
+        body: 'Nobody is sent anywhere until Mo approves. Send the suggested responder.',
+        waitFor: (s) => latest(s)?.status === 'approved',
+        hint: 'Tap Approve and send',
+      },
+      {
+        as: '',
+        who: (s) => firstDispatch(s)?.volunteerId,
+        route: (s) => (firstDispatch(s) ? { pathname: '/dispatch/[id]', params: { id: firstDispatch(s)!.id } } : '/volunteer'),
+        title: 'But they can’t go',
+        body: 'Maybe they’re already helping someone, or they’re on the other side of a crowd. Saying no takes one tap.',
+        waitFor: latestDeclined,
+        hint: 'Tap “I can’t go”',
+      },
+      {
+        as: MO,
+        route: incidentRoute,
+        title: 'Mo already has the next person',
+        body: 'Ground Control told Mo who can’t go and lined up the next nearest person with the same skills. Nobody is sent until Mo says yes.',
+        waitFor: (s) => latestDeclined(s) && latest(s)?.status === 'approved',
+        hint: 'Tap Approve and send',
+      },
+      {
+        as: MO,
+        route: incidentRoute,
+        title: 'A no never leaves anyone waiting',
+        body: 'The next person is on their way, and the history shows who said no and who went instead. If Mo hadn’t answered, the zone lead could have stepped in.',
         next: 'Done',
       },
     ],
@@ -199,7 +255,7 @@ export const useTour = create<TourState>()(() => ({ scenario: null, index: 0, bu
 function go(beat: Beat) {
   const s = useStore.getState();
   // The responder beat follows whoever was actually dispatched.
-  const who = beat.as || s.dispatches[s.dispatches.length - 1]?.volunteerId || MO;
+  const who = beat.who?.(s) || beat.as || s.dispatches[s.dispatches.length - 1]?.volunteerId || MO;
   if (s.currentUserId !== who) signInAs(who);
   const href = beat.route?.(useStore.getState());
   if (href) {
@@ -231,9 +287,10 @@ export function nextBeat() {
     void enterBeat(scenario, index + 1);
     return;
   }
-  // Each story leads into the next: heat → duplicate → Mo is busy.
+  // Each story leads into the next: heat → duplicate → Mo is busy → can't go.
   if (scenario === 'heat') startTour('fight');
   else if (scenario === 'fight') startTour('busy');
+  else if (scenario === 'busy') startTour('decline');
   else endTour();
 }
 

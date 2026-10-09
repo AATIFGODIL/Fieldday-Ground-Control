@@ -8,8 +8,9 @@ export function escalationWindowMs(incident: Pick<Incident, 'urgency'>): number 
   return incident.urgency === 'critical' ? SAFETY_LEAD_WINDOW_CRITICAL_MS : SAFETY_LEAD_WINDOW_MS;
 }
 
-export function escalationUnlocksAt(incident: Pick<Incident, 'urgency' | 'createdAt'>): number {
-  return incident.createdAt + escalationWindowMs(incident);
+/** The window runs from when the incident started waiting: when it was logged, or when a responder last said they can't go. */
+export function escalationUnlocksAt(incident: Pick<Incident, 'urgency' | 'createdAt' | 'awaitingSince'>): number {
+  return (incident.awaitingSince ?? incident.createdAt) + escalationWindowMs(incident);
 }
 
 export type ApprovalCheck =
@@ -32,7 +33,7 @@ export function pendingLinksFor(incidentId: string, links: RelatedLink[]): Relat
  */
 export function canApprove(
   user: Pick<Volunteer, 'id' | 'role' | 'leadsZoneId'>,
-  incident: Pick<Incident, 'id' | 'status' | 'urgency' | 'createdAt' | 'zoneId'>,
+  incident: Pick<Incident, 'id' | 'status' | 'urgency' | 'createdAt' | 'awaitingSince' | 'zoneId'>,
   links: RelatedLink[],
   now: number,
 ): ApprovalCheck {
@@ -67,7 +68,7 @@ export function canApprove(
 /** Related-link resolution follows the same authority as approval. */
 export function canResolveLinks(
   user: Pick<Volunteer, 'role' | 'leadsZoneId'>,
-  incident: Pick<Incident, 'urgency' | 'createdAt' | 'zoneId'>,
+  incident: Pick<Incident, 'urgency' | 'createdAt' | 'awaitingSince' | 'zoneId'>,
   now: number,
 ): boolean {
   if (user.role === 'safety_lead') return true;
