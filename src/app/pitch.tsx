@@ -670,6 +670,466 @@ function LaunchFilm({ s }: { s: Sizes }) {
   );
 }
 
+/* --------------------------- the four feature slides --------------------------- */
+
+// Each feature slide pairs a few words with the app itself: a phone showing
+// the real screen, and one simple visual beside it. The visuals differ slide
+// to slide (tiles, rings, rows, a timeline) so the four never feel the same.
+// Loops run off the wall clock, so a phone and the visual beside it stay in step.
+
+/** Re-render every `ms`, for looping visuals. */
+function useNow(ms = 60) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (REDUCE) return;
+    const id = setInterval(() => setNow(Date.now()), ms);
+    return () => clearInterval(id);
+  }, [ms]);
+  return now;
+}
+/** Which of `n` steps a loop of `stepMs` each is on (the last step if motion is reduced). */
+function useStep(n: number, stepMs: number) {
+  const now = useNow(200);
+  return REDUCE ? n - 1 : Math.floor(now / stepMs) % n;
+}
+
+const FEATURE_RED = '#FF453A';
+const IOS_GREY = '#1C1C1E';
+const IOS_GREY2 = '#2C2C2E';
+const IOS_SECONDARY = 'rgba(235,235,245,0.62)';
+
+/** An iPhone in dark mode, drawn in points (402 × 874 screen) and scaled to fit the slide. */
+function PhoneMock({ s, children, time = '14:31' }: { s: Sizes; children: ReactNode; time?: string }) {
+  const h = (phoneMockWidth(s) * 896) / 424;
+  const k = h / 896;
+  return (
+    <View style={{ width: 424 * k, height: h }}>
+      <View style={{ position: 'absolute', left: 0, top: 0, width: 424, height: 896, transform: [{ scale: k }], transformOrigin: 'top left' }}>
+        <View style={{ flex: 1, borderRadius: 72, backgroundColor: '#3A3A3E', padding: 4 }}>
+          <View style={{ flex: 1, borderRadius: 68, backgroundColor: '#000', padding: 7 }}>
+            <View style={{ flex: 1, borderRadius: 61, overflow: 'hidden', backgroundColor: '#000' }}>
+              {children}
+              <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 34 }}>
+                <Text style={t(17, '600', '#FFFFFF')}>{time}</Text>
+                <View style={{ width: 125, height: 37, borderRadius: 19, backgroundColor: '#000', marginTop: 4 }} />
+                <View style={{ flexDirection: 'row', gap: 5, alignItems: 'flex-end' }}>
+                  {[4, 7, 10, 13].map((b) => (
+                    <View key={b} style={{ width: 3.5, height: b, borderRadius: 1, backgroundColor: '#FFFFFF' }} />
+                  ))}
+                  <View style={{ width: 24, height: 12, borderRadius: 4, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.5)', marginLeft: 4, padding: 1.5 }}>
+                    <View style={{ flex: 1, borderRadius: 2, backgroundColor: '#FFFFFF' }} />
+                  </View>
+                </View>
+              </View>
+              <View pointerEvents="none" style={{ position: 'absolute', bottom: 8, left: 131, width: 140, height: 5, borderRadius: 3, backgroundColor: '#FFFFFF' }} />
+            </View>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function PhoneButton({ title, tone = 'violet', icon }: { title: string; tone?: 'violet' | 'grey'; icon?: 'check' }) {
+  return (
+    <View style={{ height: 54, borderRadius: 27, backgroundColor: tone === 'violet' ? '#8B5CF6' : IOS_GREY2, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }}>
+      {icon && <Glyph name={icon} size={18} color="#FFFFFF" strokeWidth={3} />}
+      <Text style={t(17, '600', '#FFFFFF')}>{title}</Text>
+    </View>
+  );
+}
+
+/* --- 1. duplicates --- */
+
+const DUP_REPORTS = [
+  { who: 'Aisha', at: '14:31', said: '“Two guys throwing punches by the barrier.”' },
+  { who: 'Tom', at: '14:32', said: '“Fight near the front, people pushing back.”' },
+];
+
+/** Mo's compare screen: two reports the AI thinks are one fight. */
+function CompareMock() {
+  return (
+    <View style={{ flex: 1, paddingTop: 66, paddingHorizontal: 18 }}>
+      <Text style={t(16, '600', VIOLET)}>‹ Incidents</Text>
+      <Text style={[t(30, '800', '#FFFFFF'), { marginTop: 8 }]}>Same thing, or two?</Text>
+      <View style={{ marginTop: 14, borderRadius: 18, padding: 14, gap: 4, backgroundColor: 'rgba(167,139,250,0.14)' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Glyph name="sparkle" size={16} color={VIOLET} />
+          <Text style={t(15, '700', VIOLET)}>AI · 88% likely the same</Text>
+        </View>
+        <Text style={t(15, '500', IOS_SECONDARY)}>Flagged because they’re close in time and place.</Text>
+      </View>
+      {DUP_REPORTS.map((r, i) => (
+        <View key={r.who}>
+          {i > 0 && (
+            <View style={{ alignItems: 'center', height: 26, justifyContent: 'center' }}>
+              <View style={{ position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: VIOLET, opacity: 0.6 }} />
+              <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#000', borderWidth: 2, borderColor: VIOLET, alignItems: 'center', justifyContent: 'center' }}>
+                <Glyph name="link" size={14} color={VIOLET} />
+              </View>
+            </View>
+          )}
+          <View style={{ marginTop: i ? 0 : 14, borderRadius: 18, padding: 14, gap: 8, backgroundColor: IOS_GREY }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: IOS_GREY2, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={t(14, '700', '#FFFFFF')}>{r.who[0]}</Text>
+              </View>
+              <Text style={[t(16, '600', '#FFFFFF'), { flex: 1 }]}>
+                {r.who} <Text style={{ color: IOS_SECONDARY, fontWeight: '500' }}>· {r.at}</Text>
+              </Text>
+              <View style={{ backgroundColor: 'rgba(255,69,58,0.18)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                <Text style={t(12, '700', '#FF8A80')}>Fight</Text>
+              </View>
+            </View>
+            <Text style={t(17, '500', '#F2F2F7')}>{r.said}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              <Glyph name="pin" size={13} color={IOS_SECONDARY} />
+              <Text style={t(13, '500', IOS_SECONDARY)}>Lawn Stage, front barrier</Text>
+            </View>
+          </View>
+        </View>
+      ))}
+      <View style={{ position: 'absolute', left: 18, right: 18, bottom: 40, gap: 10 }}>
+        <PhoneButton title="Same thing · merge them" />
+        <PhoneButton title="Two separate things" tone="grey" />
+      </View>
+    </View>
+  );
+}
+
+/** How wide the phone mock is, so the words beside it can size themselves to the space left. */
+const phoneMockWidth = (s: Sizes) => ((s.phone ? clamp(s.height * 0.42, 300, 400) : clamp(s.height * 0.74, 420, 720)) * 424) / 896;
+
+/**
+ * "AI spots reports…" on one line, and under it the three things the AI
+ * compares (when, where, what) as tiles that together match the line's width.
+ */
+function SpotsBlock({ s }: { s: Sizes }) {
+  const c = useColors();
+  const line = 'AI spots reports that might be the same thing.';
+  // The space beside the phone, and a size that keeps the line on one line in it.
+  const room = s.width - 2 * s.pad - phoneMockWidth(s) - 40;
+  const px = s.phone ? s.sub : Math.min(s.sub, room / (line.length * 0.5));
+  const tiles: { icon: 'clock' | 'pin' | 'radio'; title: string; text: string }[] = [
+    { icon: 'clock', title: 'When', text: 'Logged a minute apart' },
+    { icon: 'pin', title: 'Where', text: 'Same spot on the map' },
+    { icon: 'radio', title: 'What', text: 'Described the same way' },
+  ];
+  return (
+    <View style={{ alignSelf: 'flex-start', gap: clamp(s.width * 0.018, 18, 32) }}>
+      <Text numberOfLines={s.phone ? undefined : 1} style={t(px, '600', c.muted)}>
+        {line}
+      </Text>
+      {/* Zero width of its own, full width of the line: the line sets how wide the tiles are. */}
+      <View style={{ flexDirection: s.phone ? 'column' : 'row', gap: 18, ...(s.phone ? {} : { width: 0, minWidth: '100%' }) }}>
+        {tiles.map((x) => (
+          <View key={x.title} style={{ flex: s.phone ? undefined : 1, minHeight: s.phone ? undefined : clamp(s.height * 0.3, 210, 300), borderRadius: 32, padding: clamp(s.width * 0.017, 22, 32), gap: 16, backgroundColor: c.fill, justifyContent: 'space-between' }}>
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }}>
+              <Glyph name={x.icon} size={32} color={c.bg} strokeWidth={2.4} />
+            </View>
+            <View style={{ gap: 6 }}>
+              <Text style={t(clamp(s.width * 0.024, 26, 40), '800', c.ink)}>{x.title}</Text>
+              <Text style={t(clamp(s.width * 0.014, 17, 24), '500', c.muted)}>{x.text}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/* --- 2. when Mo doesn't answer --- */
+
+const ESC_CYCLE = 9000;
+const ESC_CRIT = 3000; // the 30-second clock, played fast
+const ESC_OTHER = 7200; // the 2-minute clock, played fast
+
+/** A zone lead's incident screen: Mo hasn't answered, so after 30 s they can approve. */
+function EscalationMock() {
+  const now = useNow(60);
+  const p = REDUCE ? ESC_CRIT + 1 : now % ESC_CYCLE;
+  const secs = Math.min(30, Math.floor((p / ESC_CRIT) * 30));
+  const open = p >= ESC_CRIT;
+  const done = p >= ESC_CRIT + 1600;
+  return (
+    <View style={{ flex: 1, paddingTop: 66, paddingHorizontal: 18 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', backgroundColor: IOS_GREY, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}>
+        <Glyph name="person" size={14} color="#FFFFFF" />
+        <Text style={t(14, '600', '#FFFFFF')}>Grace · Water Station lead</Text>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16 }}>
+        <View style={{ backgroundColor: FEATURE_RED, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+          <Text style={t(13, '700', '#FFFFFF')}>Critical</Text>
+        </View>
+        <Text style={t(14, '500', IOS_SECONDARY)}>Water Station · 14:02</Text>
+      </View>
+      <Text style={[t(30, '800', '#FFFFFF'), { marginTop: 8 }]}>Heat collapse</Text>
+      <View style={{ marginTop: 16, borderRadius: 20, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: open ? 'rgba(167,139,250,0.16)' : 'rgba(255,69,58,0.14)' }}>
+        <Glyph name="clock" size={26} color={open ? VIOLET : '#FF8A80'} />
+        <View style={{ flex: 1 }}>
+          <Text style={t(16, '700', '#FFFFFF')}>{open ? 'You can approve now' : 'Waiting for Mo'}</Text>
+          <Text style={t(14, '500', IOS_SECONDARY)}>{open ? 'Mo hasn’t answered in 30 s.' : 'No answer yet.'}</Text>
+        </View>
+        <Text style={[t(28, '800', open ? VIOLET : '#FF8A80'), { fontVariant: ['tabular-nums'] }]}>0:{String(secs).padStart(2, '0')}</Text>
+      </View>
+      <View style={{ marginTop: 12, borderRadius: 20, padding: 14, backgroundColor: IOS_GREY, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={t(15, '700', '#FFFFFF')}>SL</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <Glyph name="sparkle" size={13} color={VIOLET} />
+            <Text style={t(13, '600', VIOLET)}>AI suggests</Text>
+          </View>
+          <Text style={t(17, '600', '#FFFFFF')}>Sam Lee</Text>
+          <Text style={t(14, '500', IOS_SECONDARY)}>First aid · 70 m away</Text>
+        </View>
+      </View>
+      <View style={{ position: 'absolute', left: 18, right: 18, bottom: 40, gap: 10 }}>
+        <View style={{ opacity: open ? 1 : 0.35 }}>
+          <PhoneButton title={done ? 'Sent to Sam' : 'Approve and send'} icon="check" />
+        </View>
+        <Text style={[t(13, '500', IOS_SECONDARY), { textAlign: 'center' }]}>You’re approving as location lead. This is logged and Mo is told.</Text>
+      </View>
+    </View>
+  );
+}
+
+/** A countdown ring that fills, then shows the lead stepping in. */
+function CountdownRing({ s, label, value, fillMs, color }: { s: Sizes; label: string; value: string; fillMs: number; color: string }) {
+  const c = useColors();
+  const now = useNow(60);
+  const p = REDUCE ? 1 : Math.min(1, (now % ESC_CYCLE) / fillMs);
+  const size = s.phone ? 104 : clamp(s.width * 0.1, 150, 200);
+  const r = size / 2 - 10;
+  const circ = 2 * Math.PI * r;
+  return (
+    <View style={{ alignItems: 'center', gap: 12 }}>
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        <Svg width={size} height={size} style={{ position: 'absolute' }}>
+          <Circle cx={size / 2} cy={size / 2} r={r} stroke={c.fill} strokeWidth={12} fill="none" />
+          <Circle cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={12} fill="none" strokeLinecap="round" strokeDasharray={`${circ * p} ${circ}`} transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+        </Svg>
+        <Text style={t(s.phone ? 24 : clamp(s.width * 0.026, 30, 46), '800', c.ink)}>{value}</Text>
+      </View>
+      <Text style={t(clamp(s.width * 0.013, 17, 22), '700', p >= 1 ? c.ink : c.muted)}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, opacity: p >= 1 ? 1 : 0.25 }}>
+        <Glyph name="person" size={16} color={color} />
+        <Text style={t(clamp(s.width * 0.011, 14, 18), '600', color)}>{s.phone ? 'Lead steps in' : 'Zone lead can approve'}</Text>
+      </View>
+    </View>
+  );
+}
+
+function Reasons({ s }: { s: Sizes }) {
+  const c = useColors();
+  const items: { icon: 'clock' | 'radio' | 'phone' | 'bell'; text: string }[] = [
+    { icon: 'clock', text: 'On a break' },
+    { icon: 'radio', text: 'No signal' },
+    { icon: 'phone', text: 'Phone died' },
+    { icon: 'bell', text: 'Missed the buzz' },
+  ];
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+      {items.map((x) => (
+        <View key={x.text} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 999, borderWidth: 1.5, borderColor: c.grey, paddingHorizontal: 16, paddingVertical: 9 }}>
+          <Glyph name={x.icon} size={18} color={c.muted} />
+          <Text style={t(clamp(s.width * 0.012, 16, 20), '600', c.muted)}>{x.text}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function Rings({ s }: { s: Sizes }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: clamp(s.width * 0.04, 24, 64), marginTop: 6 }}>
+      <CountdownRing s={s} label="Critical" value="30 s" fillMs={ESC_CRIT} color={FEATURE_RED} />
+      <CountdownRing s={s} label="Everything else" value="2 min" fillMs={ESC_OTHER} color={VIOLET} />
+    </View>
+  );
+}
+
+/* --- 3. briefed on the move --- */
+
+const BRIEF_STEP = 2200;
+const BRIEF_SAY = [
+  'Man collapsed by the water taps. Likely heat. Go now.',
+  'He’s red and confused. Priya is with him. Bring water.',
+  'Head past the Food Court, then left at the taps. Call 000 if he stops responding.',
+];
+
+/** Sam's brief, read into his earpiece: it grows with the walk. */
+function BriefMock() {
+  const level = useStep(3, BRIEF_STEP);
+  const now = useNow(90);
+  const dist = [70, 400, 900][level];
+  const mins = [1, 5, 11][level];
+  return (
+    <View style={{ flex: 1, paddingTop: 66, paddingHorizontal: 18 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: 'rgba(255,69,58,0.18)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: FEATURE_RED }} />
+        <Text style={t(14, '700', '#FF8A80')}>Critical</Text>
+      </View>
+      <Text style={[t(32, '800', '#FFFFFF'), { marginTop: 12 }]}>You’re needed</Text>
+      <Text style={t(15, '500', IOS_SECONDARY)}>Heat collapse · Water Station</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 14 }}>
+        <Text style={[t(46, '800', VIOLET), { fontVariant: ['tabular-nums'] }]}>{dist} m</Text>
+        <Text style={t(17, '500', IOS_SECONDARY)}>· {mins} min walk</Text>
+      </View>
+      <View style={{ marginTop: 16, borderRadius: 22, padding: 16, gap: 12, backgroundColor: IOS_GREY }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={t(13, '700', IOS_SECONDARY, { letterSpacing: 0.4, textTransform: 'uppercase' })}>Your brief</Text>
+          <View style={{ backgroundColor: 'rgba(167,139,250,0.16)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+            <Text style={t(13, '700', VIOLET)}>{['Short', 'Medium', 'Full'][level]}</Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
+            <Glyph name="volume" size={22} color="#FFFFFF" />
+          </View>
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3, height: 32 }}>
+            {Array.from({ length: 30 }, (_, i) => (
+              <View key={i} style={{ width: 3.5, borderRadius: 2, backgroundColor: VIOLET, height: 4 + 24 * Math.abs(Math.sin(now / 160 + i * 1.7) * Math.sin(now / 410 + i * 0.6)) }} />
+            ))}
+          </View>
+          <Text style={t(13, '600', VIOLET)}>In your ear</Text>
+        </View>
+        <View style={{ gap: 6 }}>
+          {BRIEF_SAY.slice(0, level + 1).map((line) => (
+            <Text key={line} style={t(17, '500', '#F2F2F7')}>
+              {line}
+            </Text>
+          ))}
+        </View>
+      </View>
+      <View style={{ position: 'absolute', left: 18, right: 18, bottom: 40 }}>
+        <PhoneButton title="I’m on my way" />
+      </View>
+    </View>
+  );
+}
+
+/** The three brief lengths, lighting up in step with the phone. */
+function BriefRows({ s }: { s: Sizes }) {
+  const c = useColors();
+  const level = useStep(3, BRIEF_STEP);
+  const rows = [
+    { when: 'Under 100 m', what: 'Short' },
+    { when: 'A few minutes away', what: 'Medium' },
+    { when: 'A longer walk', what: 'Full' },
+  ];
+  return (
+    <View style={{ gap: 12, alignSelf: 'stretch', maxWidth: s.phone ? undefined : 640, marginTop: 6 }}>
+      {rows.map((r, i) => {
+        const on = i === level;
+        return (
+          <View
+            key={r.what}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderRadius: 999,
+              paddingHorizontal: 28,
+              minHeight: clamp(s.width * 0.045, 58, 78),
+              borderWidth: 2,
+              borderColor: on ? c.accent : 'transparent',
+              backgroundColor: on ? 'rgba(201,182,242,0.16)' : c.fill,
+            }}>
+            <Text style={t(clamp(s.width * 0.015, 18, 26), '600', on ? c.ink : c.muted)}>{r.when}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Glyph name="volume" size={20} color={on ? c.accent : c.grey} />
+              <Text style={t(clamp(s.width * 0.015, 18, 26), '800', on ? c.accent : c.grey)}>{r.what}</Text>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/* --- 4. conditions change --- */
+
+const DAY_STEP = 2600;
+const DAY = [
+  { time: '6 pm', what: 'Headliner on', change: '+4 crowd control', where: 'Lawn Stage', icon: 'music' as const },
+  { time: '10 pm', what: 'Bars get busy', change: '+3 security', where: 'Both bars', icon: 'glass' as const },
+  { time: 'Any time', what: 'Storm coming', change: 'Crowd help to the gates', where: 'Gates', icon: 'cloud' as const },
+];
+
+/** Mo's one-tap moves: the right preset lights up as the evening goes on. */
+function MovesMock() {
+  const step = useStep(3, DAY_STEP);
+  return (
+    <View style={{ flex: 1, paddingTop: 66, paddingHorizontal: 18 }}>
+      <Text style={t(34, '800', '#FFFFFF')}>Staff</Text>
+      <Text style={[t(13, '700', IOS_SECONDARY, { letterSpacing: 0.4, textTransform: 'uppercase' }), { marginTop: 18 }]}>One-tap surges</Text>
+      <View style={{ marginTop: 10, gap: 10 }}>
+        {DAY.map((d, i) => {
+          const on = i === step;
+          return (
+            <View key={d.time} style={{ borderRadius: 20, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: on ? 'rgba(139,92,246,0.22)' : IOS_GREY, borderWidth: 1.5, borderColor: on ? VIOLET : 'transparent' }}>
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: on ? '#8B5CF6' : IOS_GREY2, alignItems: 'center', justifyContent: 'center' }}>
+                <Glyph name={d.icon} size={20} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={t(16, '600', '#FFFFFF')}>{d.what}</Text>
+                <Text style={t(14, '500', on ? VIOLET : IOS_SECONDARY)}>
+                  {d.change} · {d.where}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+      <View style={{ marginTop: 18, borderRadius: 20, padding: 16, gap: 6, backgroundColor: IOS_GREY }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Glyph name="sparkle" size={14} color={VIOLET} />
+          <Text style={t(13, '600', VIOLET)}>Who moves</Text>
+        </View>
+        <Text style={t(16, '500', '#F2F2F7')}>Nearest free people with the right skills, picked for you.</Text>
+      </View>
+      <View style={{ position: 'absolute', left: 18, right: 18, bottom: 40, gap: 10 }}>
+        <PhoneButton title="Preview changes" tone="grey" />
+        <PhoneButton title="Approve the moves" icon="check" />
+      </View>
+    </View>
+  );
+}
+
+/** An evening at the festival, left to right: what changes, and what Mo sends. */
+function DayTimeline({ s }: { s: Sizes }) {
+  const c = useColors();
+  const step = useStep(3, DAY_STEP);
+  return (
+    <View style={{ alignSelf: 'stretch', marginTop: 10 }}>
+      <View style={{ flexDirection: s.phone ? 'column' : 'row', gap: 20 }}>
+        {DAY.map((d, i) => {
+          const on = i === step;
+          return (
+            <View key={d.time} style={{ flex: s.phone ? undefined : 1, gap: 10 }}>
+              {/* The line runs from this circle's edge to the next one's, lit once the evening has passed it. */}
+              {!s.phone && i < DAY.length - 1 && (
+                <View style={{ position: 'absolute', left: 34, right: -14, top: 12, height: 4, borderRadius: 2, backgroundColor: i < step ? c.accent : c.fill }} />
+              )}
+              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: on ? c.accent : c.bg, borderWidth: 3, borderColor: i <= step ? c.accent : c.grey }} />
+              <Text style={t(clamp(s.width * 0.024, 26, 40), '800', on ? c.accent : c.ink)}>{d.time}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Glyph name={d.icon} size={20} color={c.muted} />
+                <Text style={t(clamp(s.width * 0.014, 18, 24), '600', c.ink)}>{d.what}</Text>
+              </View>
+              <View style={{ alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7, backgroundColor: on ? 'rgba(201,182,242,0.18)' : c.fill }}>
+                <Text style={t(clamp(s.width * 0.011, 15, 19), '700', on ? c.accent : c.muted)}>{d.change}</Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 /* ---------------------------------- slides ---------------------------------- */
 
 interface Slide {
@@ -681,6 +1141,8 @@ interface Slide {
   lines: (s: Sizes) => ReactNode[];
   /** Something drawn beside the lines on wide screens (below on phones). */
   aside?: (s: Sizes) => ReactNode;
+  /** Put the aside on the left on wide screens. */
+  asideFirst?: boolean;
   /** Lines that animate themselves (cards) aren't wrapped again. */
   raw?: number[];
   /** Fills the whole slide, edge to edge, instead of lines (the launch film). */
@@ -808,49 +1270,83 @@ const SLIDES: Slide[] = [
     lines: () => [],
     full: (s) => <LaunchFilm s={s} />,
   },
+  /* ===== What it does ===== */
   {
-    theme: 'dusk',
+    theme: 'plum',
     notes:
-      'Four steps. A volunteer just says what they see. AI writes it up as a clear incident and checks whether someone already reported it. Mo sees the nearest people with the right skills and approves in one tap. Their phone tells them where to go, out loud, while they walk.',
-    raw: [1],
+      'Incidents get duplicated, especially big, visible ones like fights. Mo shouldn’t be overwhelmed. Ground Control tells him when reports might be the same thing, using AI that looks at when each was logged, where, and what was described. He merges them in one tap, or keeps them apart.',
     lines: (s) => [
-      <Big key="h" s={s} size="h2" max={0.8}>
-        From radio call to help, <Grey>in four steps.</Grey>
+      <Big key="h" s={s} size="h2" max={0.5}>
+        Big incidents get reported twice.{'\n'}
+        <Grey>Mo sees one.</Grey>
       </Big>,
-      <CardRow
-        key="c"
-        s={s}
-        from={1}
-        line
-        items={[
-          { n: 1, title: 'Say it', text: 'A volunteer just talks. No forms.' },
-          { n: 2, title: 'AI writes it up', text: 'A clear report, checked for duplicates.' },
-          { n: 3, title: 'Mo approves', text: 'The nearest people with the right skills.' },
-          { n: 4, title: 'Help arrives', text: 'Their phone says where to go, out loud.' },
-        ]}
-      />,
+      <SpotsBlock key="spots" s={s} />,
     ],
+    aside: (s) => (
+      <PhoneMock s={s}>
+        <CompareMock />
+      </PhoneMock>
+    ),
   },
   {
     theme: 'dusk',
+    asideFirst: true,
     notes:
-      'The AI does the legwork, but it never acts alone. Mo approves every response and every move. If a critical report gets no answer in 30 seconds, the zone’s location lead can step in, and Mo is told. Every decision is logged with a name.',
-    raw: [1],
+      'What if Mo doesn’t respond in time? He might be dealing with something of his own or on a break; wifi and signal cut out; phones die; you don’t feel a buzz in your pocket. So there’s a fallback: the zone’s lead can take over the approval, after 30 seconds for a critical incident and 2 minutes for anything else. This isn’t a quirk of the app, it’s a critical design feature. In every one of these cases people could die, you could be liable for millions, and reputations and future contracts are at risk, not to mention living with it. For Fieldday, a small company with 45,000 people over three days, 300 volunteers and one person at the top, it’s a necessity. And the app is built to be reused at future festivals, where something is certain to go wrong.',
     lines: (s) => [
-      <Big key="h" s={s} size="h2" max={0.8}>
-        AI does the legwork. <Grey>People make the calls.</Grey>
+      <Big key="h" s={s} size="h2" max={0.5}>
+        What if Mo doesn’t answer?
       </Big>,
-      <CardRow
-        key="c"
-        s={s}
-        from={1}
-        items={[
-          { title: 'Mo approves', text: 'Every response, and every change to who stands where.' },
-          { title: 'Leads step in', text: 'Critical with no answer in 30 seconds? The zone’s lead can approve.' },
-          { title: 'Everything logged', text: 'Who decided, what was sent, and when.' },
-        ]}
-      />,
+      <Reasons key="why" s={s} />,
+      <Rings key="rings" s={s} />,
+      <Muted key="m" s={s} max={0.5}>
+        45,000 people. 300 volunteers. One Mo.
+      </Muted>,
     ],
+    aside: (s) => (
+      <PhoneMock s={s} time="14:02">
+        <EscalationMock />
+      </PhoneMock>
+    ),
+  },
+  {
+    theme: 'plum',
+    notes:
+      'Walking and reading a brief at the same time doesn’t work. So the AI speaks it into their earpiece, and sizes it to the walk: short if they’re close, longer if they’ve got further to go, so they’re briefed by the time they arrive.',
+    lines: (s) => [
+      <Big key="h" s={s} size="h2" max={0.5}>
+        Briefed on the move.
+      </Big>,
+      <Muted key="m" s={s} max={0.45}>
+        Read into their earpiece, sized to the walk.
+      </Muted>,
+      <BriefRows key="rows" s={s} />,
+    ],
+    aside: (s) => (
+      <PhoneMock s={s} time="14:03">
+        <BriefMock />
+      </PhoneMock>
+    ),
+  },
+  {
+    theme: 'dusk',
+    asideFirst: true,
+    notes:
+      'Conditions change. A popular concert might need more crowd control; the bars need more security as the night goes on; a storm sends everyone to the gates. Mo gets flexible control: one tap moves the right people, and he approves every move.',
+    lines: (s) => [
+      <Big key="h" s={s} size="h2" max={0.5}>
+        Conditions change. <Grey>So does the plan.</Grey>
+      </Big>,
+      <DayTimeline key="day" s={s} />,
+      <Muted key="m" s={s} max={0.5}>
+        One tap moves the right people. Mo approves every move.
+      </Muted>,
+    ],
+    aside: (s) => (
+      <PhoneMock s={s} time="18:00">
+        <MovesMock />
+      </PhoneMock>
+    ),
   },
 
   /* ===== 02 Build ===== */
@@ -961,7 +1457,7 @@ function SlideBody({ i, s }: { i: number; s: Sizes }) {
         flex: 1,
         paddingHorizontal: slide.full ? 0 : s.pad,
         paddingVertical: slide.full ? 0 : 56,
-        flexDirection: aside && !s.phone ? 'row' : 'column',
+        flexDirection: aside && !s.phone ? (slide.asideFirst ? 'row-reverse' : 'row') : 'column',
         alignItems: aside && !s.phone ? 'center' : slide.center ? 'center' : 'flex-start',
         justifyContent: 'center',
         gap: aside ? 32 : 0,
