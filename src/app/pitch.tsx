@@ -3,9 +3,8 @@
  *
  * Ground Control's own look: Apple's system type, all-dark slides tinted by
  * chapter (warm through the problem, plum for the solution, blue for the demo), 3D
- * extruded titles, a radio transcript that types itself and cuts out, the
- * launch film's flat festival map with a responder walking to an incident, and
- * the launch film.
+ * extruded titles, the launch film's flat festival map with a responder
+ * walking to an incident, and the launch film.
  *
  * Motion: lines fade up and unblur, one after another; slides fade out,
  * drifting the way you're going.
@@ -70,7 +69,6 @@ const APPLE = Platform.select({
   web: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif',
   default: undefined,
 });
-const MONO = Platform.select({ web: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace', default: 'Menlo' });
 
 /** "Offscript" gets its own voice: a heavy italic serif. */
 const OFFSCRIPT: TextStyle = Platform.select<TextStyle>({
@@ -194,11 +192,6 @@ function CountUp({ to, delay = 400, style }: { to: number; delay?: number; style
 
 /* ------------------------------- building blocks ------------------------------- */
 
-function Section({ n, name, s }: { n: string; name: string; s: Sizes }) {
-  const c = useColors();
-  return <Text style={t(s.label, '800', c.accent, { letterSpacing: 0.6, textTransform: 'uppercase' })}>{`${n} · ${name}`}</Text>;
-}
-
 function Big({ s, size, children, max }: { s: Sizes; size: 'mega' | 'h' | 'h2' | 'sub'; children: ReactNode; max?: number }) {
   const c = useColors();
   return <Text style={[t(s[size], size === 'sub' ? '600' : '700', c.ink), { maxWidth: s.phone || !max ? undefined : s.width * max }]}>{children}</Text>;
@@ -216,13 +209,13 @@ function Muted({ s, children, max = 0.66 }: { s: Sizes; children: ReactNode; max
 
 function Source({ s, children }: { s: Sizes; children: ReactNode }) {
   const c = useColors();
-  return <Text style={[t(s.label, '500', c.grey), { maxWidth: s.phone ? undefined : s.width * 0.75 }]}>Source: {children}</Text>;
+  return <Text style={[t(clamp(s.width * 0.0105, 13, 17), '500', c.grey), { maxWidth: s.phone ? undefined : s.width * 0.75 }]}>Source: {children}</Text>;
 }
 
 /**
  * Chunky 3D letters: the same words stacked a pixel apart in a darker shade
  * underneath, so the title reads as a solid block. `lit` draws the face in
- * the slide's accent (the glowing 38°C).
+ * the slide's accent.
  */
 function Extrude({ px, children, center, lit }: { px: number; children: ReactNode; center?: boolean; lit?: boolean }) {
   const c = useColors();
@@ -250,6 +243,12 @@ function Offscript({ s }: { s: Sizes }) {
       A project by <Text style={[OFFSCRIPT, { color: c.offscript, fontSize: s.sub * 1.3, letterSpacing: 0 }]}>Offscript</Text>
     </Text>
   );
+}
+
+/** "Offscript" in its own face, for use inside a line of text. */
+function OffscriptWord({ s }: { s: Sizes }) {
+  const c = useColors();
+  return <Text style={[OFFSCRIPT, { color: c.offscript, fontSize: s.sub * 1.25, letterSpacing: 0 }]}>Offscript</Text>;
 }
 
 function Card({ s, n, title, text }: { s: Sizes; n?: number; title: string; text: string }) {
@@ -321,89 +320,30 @@ function CTA({ s, title, onPress }: { s: Sizes; title: string; onPress: () => vo
   );
 }
 
-/* --------------------------------- radio --------------------------------- */
+/* ------------------------------ the inquiries ------------------------------ */
 
-const RADIO = [
-  { time: '14:02', text: 'Water stn to control. Man down by the taps.' },
-  { time: '14:02', text: 'He’s red, sweating, not making sense…' },
-  { time: '14:03', text: '[ static ]', cut: true },
+const INQUIRIES = [
+  { to: 10, name: 'Astroworld', where: 'Houston, 2021', line: 'Medics and firefighters weren’t on the same radio.' },
+  { to: 22, name: 'Manchester Arena', where: 'Manchester, 2017', line: 'The emergency response was “far below the standard it should have been.”' },
+  { to: 159, name: 'Itaewon', where: 'Seoul, 2022', line: 'Police got 11 calls warning of a crush, the first four hours before.' },
 ];
 
-/** The call, typed out as it comes in, then cut off. */
-function RadioLog({ s, delay = 700 }: { s: Sizes; delay?: number }) {
+/** Three disasters side by side: how many died, where, and what went wrong. */
+function Inquiries({ s }: { s: Sizes }) {
   const c = useColors();
-  const total = RADIO.reduce((n, l) => n + l.text.length, 0);
-  const [typed, setTyped] = useState(0);
-  useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | undefined;
-    const start = setTimeout(() => {
-      timer = setInterval(() => setTyped((n) => (n >= total ? n : n + 1)), 34);
-    }, delay);
-    return () => {
-      clearTimeout(start);
-      if (timer) clearInterval(timer);
-    };
-  }, [total, delay]);
-
-  const px = clamp(s.width * 0.021, 20, 34);
-  // Where each line starts in the overall typing, so each knows how much of itself to show.
-  const starts = RADIO.map((_, i) => RADIO.slice(0, i).reduce((n, l) => n + l.text.length, 0));
   return (
-    <View style={{ gap: 14, alignSelf: 'stretch', maxWidth: s.phone ? undefined : s.width * 0.78 }}>
-      {RADIO.map((l, i) => {
-        const left = typed - starts[i];
-        const shown = l.text.slice(0, Math.max(0, left));
-        const typing = left > 0 && left < l.text.length;
-        if (!shown && i > 0) return null;
-        return (
-          <View key={i} style={{ flexDirection: 'row', gap: 22, alignItems: 'baseline' }}>
-            <Text style={{ fontFamily: MONO, fontSize: px, color: c.grey, fontWeight: '600' }}>{l.time}</Text>
-            <Text style={{ fontFamily: MONO, fontSize: px, lineHeight: px * 1.35, color: l.cut ? '#E07A6E' : c.ink, fontWeight: '600', flexShrink: 1 }}>
-              {shown}
-              {typing ? '▍' : ''}
-            </Text>
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
-/** A crackling radio level that drops dead after `liveMs`. */
-function Waveform({ s, liveMs = 4200 }: { s: Sizes; liveMs?: number }) {
-  const bars = s.phone ? 22 : 40;
-  const h = clamp(s.width * 0.06, 48, 96);
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: h }}>
-      {Array.from({ length: bars }, (_, i) => (
-        <Bar key={i} i={i} h={h} liveMs={liveMs} />
+    <View style={{ flexDirection: s.phone ? 'column' : 'row', gap: clamp(s.width * 0.014, 14, 24), alignSelf: 'stretch', marginTop: 8 }}>
+      {INQUIRIES.map((x, i) => (
+        <View key={x.name} style={{ flex: s.phone ? undefined : 1, gap: 6, borderRadius: 32, padding: clamp(s.width * 0.02, 22, 36), backgroundColor: c.fill }}>
+          <Stat to={x.to} delay={500 + i * 250} px={clamp(s.width * 0.075, 56, 128)} />
+          <Text style={t(s.label, '700', c.muted, { textTransform: 'uppercase', letterSpacing: 0.6 })}>people died</Text>
+          <Text style={[t(clamp(s.width * 0.02, 22, 34), '800', c.ink), { marginTop: 10 }]}>{x.name}</Text>
+          <Text style={t(s.label, '500', c.grey)}>{x.where}</Text>
+          <Text style={[t(clamp(s.width * 0.018, 21, 30), '600', c.muted), { marginTop: 10 }]}>{x.line}</Text>
+        </View>
       ))}
     </View>
   );
-}
-
-function Bar({ i, h, liveMs }: { i: number; h: number; liveMs: number }) {
-  const c = useColors();
-  const v = useSharedValue(0.06);
-  useEffect(() => {
-    let k = 0;
-    const tick = setInterval(() => {
-      k += 1;
-      // Deterministic jitter per bar, louder in the middle like speech.
-      const shape = 0.35 + 0.65 * Math.sin((i / 6) + k * 0.9) ** 2;
-      v.set(withTiming(0.12 + shape * 0.88 * (0.4 + 0.6 * Math.abs(Math.sin(i * 1.7 + k))), { duration: 110 }));
-    }, 120);
-    const stop = setTimeout(() => {
-      clearInterval(tick);
-      v.set(withTiming(0.04, { duration: 260 }));
-    }, liveMs);
-    return () => {
-      clearInterval(tick);
-      clearTimeout(stop);
-    };
-  }, [i, liveMs, v]);
-  const style = useAnimatedStyle(() => ({ height: Math.max(3, v.get() * h) }));
-  return <Animated.View style={[{ width: 6, borderRadius: 3, backgroundColor: c.ink, opacity: 0.85 }, style]} />;
 }
 
 /* ------------------------------ the site map ------------------------------ */
@@ -1150,79 +1090,35 @@ interface Slide {
 }
 
 const SLIDES: Slide[] = [
-  /* ===== 01 Problem ===== */
+  /* ===== Opening ===== */
   {
     theme: 'ink',
-    notes: 'Imagine you’re Mo, the safety lead at Riverside.',
-    lines: (s) => [
-      <Section key="sec" s={s} n="01" name="Problem" />,
-      <Extrude key="h" px={s.mega}>
-        Imagine you’re Mo.
-      </Extrude>,
-      <Muted key="m" s={s}>
-        Safety lead at Riverside. 15,000 people a day. 300 volunteers. One radio earpiece.
-      </Muted>,
-    ],
-  },
-  {
-    theme: 'ember',
-    notes: 'Saturday, 2pm, 38 degrees. The queue at the water station is 40 deep. Someone collapses, and the two first-aiders rostered there never showed up.',
-    lines: (s) => [
-      <Big key="t" s={s} size="sub">
-        Saturday · 2pm
-      </Big>,
-      <Extrude key="h" px={clamp(s.width * 0.17, 96, 280)} lit>
-        38°C
-      </Extrude>,
-      <Big key="b" s={s} size="h2" max={0.8}>
-        40 people queuing for water. <Grey>Someone collapses. The first-aiders never showed.</Grey>
-      </Big>,
-    ],
-  },
-  {
-    theme: 'char',
-    notes: 'This is how it reaches Mo: a few seconds of radio, through static, and then it’s gone. Who’s closest? Who’s trained? Did anyone else call it in?',
-    lines: (s) => [
-      <Muted key="m" s={s}>
-        How it reaches Mo:
-      </Muted>,
-      <Waveform key="w" s={s} />,
-      <RadioLog key="r" s={s} />,
-      <Big key="h" s={s} size="h2" max={0.8}>
-        Then it’s gone. <Grey>Who’s closest? Who’s trained?</Grey>
-      </Big>,
-    ],
-  },
-  {
-    theme: 'ember',
     notes:
-      'This isn’t hypothetical. Ten people died at Astroworld in 2021. Texas’s concert safety task force named poor communication as a key factor: firefighters outside weren’t on the same radio as the event’s medics.',
+      'Astroworld. Manchester Arena. Itaewon. Every inquiry after an accident ends the same way: with a list of ‘what ifs’. Our job at Offscript is to make sure Riverside never has to write one.',
     lines: (s) => [
-      <Big key="h" s={s} size="h2" max={0.8}>
-        When the radio fails, <Grey>people get hurt.</Grey>
+      <Extrude key="h" px={s.h}>
+        Astroworld.{'\n'}Manchester Arena.{'\n'}Itaewon.
+      </Extrude>,
+      <View key="gap" style={{ height: clamp(s.height * 0.015, 6, 18) }} />,
+      <Big key="b" s={s} size="h2" max={0.78}>
+        Every inquiry after an accident ends the same way: <Grey>with a list of ‘what ifs’.</Grey>
       </Big>,
-      <Stat key="n" to={10} delay={600} px={clamp(s.width * 0.13, 72, 200)} />,
-      <Big key="d" s={s} size="sub" max={0.62}>
-        people died at Astroworld in 2021. Medics and firefighters weren’t on the same radio.
-      </Big>,
-      <Source key="src" s={s}>
-        Texas Task Force on Concert Safety report, via KERA News (2022); Pollstar (2021).
-      </Source>,
+      <Muted key="m" s={s} max={0.8}>
+        Our job at <OffscriptWord s={s} /> is to make sure{'\n'}Riverside never has to write one.
+      </Muted>,
     ],
   },
   {
     theme: 'char',
     notes:
-      'The Manchester Arena Inquiry said the emergency response was far below the standard it should have been, and that better coordination and communication might have saved one, possibly two lives.',
+      'This isn’t hypothetical. Astroworld, 2021: ten people died, and Texas’s concert safety task force named poor communication as a key factor; firefighters outside weren’t on the same radio as the event’s medics. Manchester Arena, 2017: 22 people were killed, and the inquiry said the emergency response was far below the standard it should have been; better coordination might have saved one, possibly two lives. Itaewon, 2022: 159 people died in a crowd crush, and police had received at least 11 emergency calls warning of it, the first almost four hours before. Three different events, the same breakdown.',
     lines: (s) => [
-      <Muted key="m" s={s}>
-        The Manchester Arena Inquiry, on the emergency response:
-      </Muted>,
-      <Big key="h" s={s} size="h" max={0.82}>
-        “Far below the standard it should have been.”
+      <Big key="h" s={s} size="h2" max={0.8}>
+        Three disasters. <Grey>Every inquiry found the response broke down.</Grey>
       </Big>,
+      <Inquiries key="stats" s={s} />,
       <Source key="src" s={s}>
-        Manchester Arena Inquiry, Volume 2 (2022).
+        Texas Task Force on Concert Safety, via KERA News (2022); Manchester Arena Inquiry, Volume 2 (2022); Korean National Police Agency call records, via Korea JoongAng Daily (2022).
       </Source>,
     ],
   },
@@ -1420,7 +1316,7 @@ function OnAir({ s }: { s: Sizes }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 2, borderColor: c.ink, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 }}>
       <Animated.View style={[{ width: 14, height: 14, borderRadius: 7, backgroundColor: c.ink }, dot]} />
-      <Text style={t(s.label, '800', c.ink, { letterSpacing: 1.5 })}>02 · ON AIR</Text>
+      <Text style={t(s.label, '800', c.ink, { letterSpacing: 1.5 })}>ON AIR</Text>
     </View>
   );
 }
