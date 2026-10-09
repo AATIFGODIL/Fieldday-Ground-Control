@@ -95,6 +95,16 @@ describe('matching (scenario 1)', () => {
     expect(candidates.filter((c) => c.tier === 'primary').every((c) => c.skills.includes('first_aid'))).toBe(true);
   });
 
+  it('sends Leo, the bar’s first-aider, when someone collapses at Bar A (Jess reporting)', () => {
+    const { volunteers, positions } = freshRoster();
+    const candidates = pickCandidates(
+      { type: 'medical', location: positions['v-jess'], reporterId: 'v-jess' },
+      { festival, volunteers, positionOf: (id) => positions[id], busyIds: new Set(), now: at(14) },
+    );
+    expect(candidates[0].volunteerId).toBe('v-leo');
+    expect(candidates.map((c) => c.volunteerId)).not.toContain('v-jess');
+  });
+
   it('excludes volunteers already on a dispatch', () => {
     const { volunteers, positions } = freshRoster();
     const candidates = pickCandidates(baseIncident, {

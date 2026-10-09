@@ -47,6 +47,10 @@ type Named = Omit<Volunteer, 'availability' | 'status' | 'languages'> & {
  *
  * S2 possible duplicate (Lawn Stage): Tom (west) and Aisha (east) report the
  * same fight ~130 m apart; Marcus and Zoe are nearby security.
+ *
+ * Bar A, for a hands-on run: Jess works the counter (RSA) and Leo is the
+ * bar's first-aider, the only one there, so a collapse at the bar always
+ * goes to him. Neither changes who's nearest in the two stories.
  */
 export const NAMED: Named[] = [
   { id: 'v-kim', name: 'Mo Rahman', role: 'safety_lead', skills: ['first_aid', 'crowd_control', 'security_licence'], pos: { x: 262, y: 300 } },
@@ -63,9 +67,11 @@ export const NAMED: Named[] = [
   { id: 'v-marcus', name: 'Marcus Brown', role: 'volunteer', zoneId: 'z-lawn', skills: ['security_licence', 'crowd_control'], pos: { x: 150, y: 152 } },
   { id: 'v-zoe', name: 'Zoe Martin', role: 'volunteer', zoneId: 'z-lawn', skills: ['security_licence', 'first_aid'], pos: { x: 110, y: 75 } },
   { id: 'v-ben', name: 'Ben Taylor', role: 'volunteer', zoneId: 'z-gate-n', skills: ['crowd_control'], pos: { x: 252, y: 22 } },
+  { id: 'v-jess', name: 'Jess Nguyen', role: 'volunteer', zoneId: 'z-bar-a', skills: ['rsa'], pos: { x: 506, y: 192 }, languages: ['English', 'Vietnamese'] },
+  { id: 'v-leo', name: 'Leo Park', role: 'volunteer', zoneId: 'z-bar-a', skills: ['first_aid'], pos: { x: 528, y: 214 }, languages: ['English', 'Korean'] },
 ];
 
-export const DEMO_IDENTITIES = ['v-kim', 'v-raj', 'v-grace', 'v-priya', 'v-sam', 'v-lena', 'v-tom', 'v-aisha', 'v-ben'];
+export const DEMO_IDENTITIES = ['v-kim', 'v-raj', 'v-grace', 'v-priya', 'v-sam', 'v-lena', 'v-tom', 'v-aisha', 'v-ben', 'v-jess', 'v-leo'];
 
 /** Zones with no named lead get a generated one. */
 const LEADS_NEEDED = (zones: Zone[]) =>
@@ -75,6 +81,8 @@ const LEADS_NEEDED = (zones: Zone[]) =>
 const NO_EXTRA_SKILL: Record<string, Skill[]> = {
   'z-water': ['first_aid'],
   'z-food': ['first_aid'],
+  // Leo is Bar A's first-aider; nobody generated there should be nearer.
+  'z-bar-a': ['first_aid'],
 };
 
 /** Extra share of generic volunteers each zone gets beyond its requirements. */
