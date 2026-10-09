@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActionSheetIOS, Alert, Linking, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 
 import { Glyph } from '@/components/ui/glyph';
@@ -90,9 +90,40 @@ export function ReportScreen() {
     }, 90);
   };
 
-  const pickPhoto = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.6 });
-    if (res && !res.canceled) setPhotoUri(res.assets[0]?.uri);
+  const openPhotoSource = async (camera: boolean) => {
+    try {
+      if (camera) {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('Camera access needed', 'Allow camera access in Settings to take a photo.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => { void Linking.openSettings(); } },
+          ]);
+          return;
+        }
+      }
+      const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.6 };
+      const res = camera
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync(options);
+      if (!res.canceled && res.assets[0]?.uri) setPhotoUri(res.assets[0].uri);
+    } catch {
+      Alert.alert('Couldn’t open photos', 'Please try again.');
+    }
+  };
+
+  const pickPhoto = () => {
+    if (Platform.OS !== 'ios') {
+      void openPhotoSource(false);
+      return;
+    }
+    ActionSheetIOS.showActionSheetWithOptions(
+      { options: ['Take Photo', 'Choose from Photos', 'Cancel'], cancelButtonIndex: 2 },
+      (index) => {
+        if (index === 0) void openPhotoSource(true);
+        if (index === 1) void openPhotoSource(false);
+      },
+    );
   };
 
   const submit = async () => {
