@@ -3,8 +3,9 @@
  *
  * Ground Control's own look: Apple's system type, all-dark slides tinted by
  * chapter (warm through the problem, plum for the solution, blue for the demo), 3D
- * extruded titles, a radio transcript that types itself and cuts out, a tilted
- * 3D festival map with a responder walking to an incident, and the launch film.
+ * extruded titles, a radio transcript that types itself and cuts out, the
+ * launch film's flat festival map with a responder walking to an incident, and
+ * the launch film.
  *
  * Motion: lines fade up and unblur, one after another; slides fade out,
  * drifting the way you're going.
@@ -26,6 +27,8 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
+
+import Svg, { Circle, G, Path, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 
 import { Glyph } from '@/components/ui/glyph';
 
@@ -403,85 +406,216 @@ function Bar({ i, h, liveMs }: { i: number; h: number; liveMs: number }) {
   return <Animated.View style={[{ width: 6, borderRadius: 3, backgroundColor: c.ink, opacity: 0.85 }, style]} />;
 }
 
-/* ------------------------------ the 3D map ------------------------------ */
+/* ------------------------------ the site map ------------------------------ */
 
-const ZONES = [
-  { x: 6, y: 8, w: 30, h: 22, color: '#D9B26F' }, // stage
-  { x: 62, y: 6, w: 32, h: 26, color: '#D9B26F' }, // main stage
-  { x: 42, y: 44, w: 14, h: 12, color: '#86A9B5' }, // water
-  { x: 60, y: 46, w: 18, h: 18, color: '#C4865A' }, // food
-  { x: 10, y: 46, w: 16, h: 12, color: '#9C8CB4' }, // bar
-  { x: 12, y: 72, w: 20, h: 16, color: '#C48D96' }, // kids
-  { x: 38, y: 78, w: 10, h: 10, color: '#B5574D' }, // first aid
-  { x: 80, y: 74, w: 14, h: 18, color: '#86A38C' }, // games
+// The launch film's map: flat and top-down, black, white zone outlines with
+// bold names, the crowd as small dots, crew in violet, and a red incident with
+// Sam walking his violet route to it. Map units are 1800 × 1100, as in the film.
+
+const MAP_W = 1800;
+const MAP_H = 1100;
+const MAP_ZONES = [
+  { name: 'LAWN STAGE', x: 110, y: 110, w: 540, h: 310, stage: true },
+  { name: 'MAIN STAGE', x: 1150, y: 90, w: 560, h: 330, stage: true },
+  { name: 'WATER', x: 770, y: 520, w: 250, h: 170 },
+  { name: 'FOOD COURT', x: 1100, y: 560, w: 380, h: 270 },
+  { name: 'BAR', x: 170, y: 560, w: 320, h: 200 },
+  { name: 'KIDS ZONE', x: 180, y: 840, w: 380, h: 190 },
+  { name: 'FIRST AID', x: 660, y: 850, w: 300, h: 170 },
+  { name: 'GAMES', x: 1500, y: 870, w: 240, h: 170 },
 ];
-const DOTS = Array.from({ length: 34 }, (_, i) => ({ x: 6 + ((i * 37) % 88), y: 8 + ((i * 53) % 84) }));
-const INCIDENT = { x: 49, y: 50 };
-const RESPONDER_FROM = { x: 70, y: 22 };
+const MAP_PATHS = ['M80 500 H1720', 'M380 420 L420 500', 'M1430 420 L1380 500', 'M600 500 L700 620 L770 640', 'M1020 640 L1100 680', 'M640 760 L760 830 L800 850', 'M1020 660 L1300 860 L1500 950', 'M480 760 L400 840'];
+const LABEL_PX = 42;
+/** A zone's name size: as big as the rest, but never wider than its zone. */
+const labelPx = (z: (typeof MAP_ZONES)[number]) => Math.min(LABEL_PX, (z.w - 48) / (z.name.length * 0.68));
+/** The patch each zone's name sits on: no dots go there, so names stay readable. */
+const labelBox = (z: (typeof MAP_ZONES)[number]) => ({ x: z.x + 8, y: z.stage ? z.y + z.h - 70 : z.y + 8, w: z.name.length * 34 + 40, h: 62 });
+const onLabel = (x: number, y: number) =>
+  MAP_ZONES.some((z) => {
+    const b = labelBox(z);
+    return x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h;
+  });
 
-/** A tilted, slowly turning model of the site: a red incident pulsing, a responder walking to it. */
-function IsoMap({ s }: { s: Sizes }) {
-  const size = s.phone ? Math.min(s.width - 48, 340) : clamp(s.width * 0.34, 320, 560);
-  const sway = useSharedValue(0);
+/** A small seeded random, so the crowd is the same every time. */
+const seeded = (n: number) => {
+  const v = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return v - Math.floor(v);
+};
+const MAP_CROWD = (() => {
+  const out: { x: number; y: number; o: number }[] = [];
+  const put = (x: number, y: number) => {
+    if (!onLabel(x, y)) out.push({ x, y, o: 0.3 + seeded(out.length * 3.3) * 0.45 });
+  };
+  for (let i = 0; i < 260; i++) put(130 + seeded(i) * 500, 204 + Math.pow(seeded(i + 0.5), 1.7) * 200);
+  for (let i = 0; i < 260; i++) put(1170 + seeded(i + 900) * 520, 184 + Math.pow(seeded(i + 900.5), 1.7) * 222);
+  for (let i = 0; i < 150; i++) put(100 + seeded(i + 1800) * 1600, 470 + seeded(i + 1800.5) * 60);
+  MAP_ZONES.slice(2).forEach((z, k) => {
+    for (let i = 0; i < Math.round((z.w * z.h) / 900); i++) put(z.x + 14 + seeded(i + k * 97 + 3000) * (z.w - 28), z.y + 14 + seeded(i + k * 97 + 3000.5) * (z.h - 28));
+  });
+  for (let i = 0; i < 160; i++) put(70 + seeded(i + 5000) * 1660, 70 + seeded(i + 5000.5) * 960);
+  return out;
+})();
+const MAP_CREW = Array.from({ length: 46 }, (_, i) => {
+  const z = MAP_ZONES[Math.floor(seeded(i + 7000) * MAP_ZONES.length)];
+  return { x: z.x + 24 + seeded(i + 7100) * (z.w - 48), y: z.y + 70 + seeded(i + 7200) * (z.h - 94) };
+}).filter((c) => !onLabel(c.x, c.y));
+/** People don't stand still: a shuffle in place, two sines at different speeds so it never loops visibly (f in 60ths of a second). */
+const shuffle = (f: number, ph: number, amp: number, speed = 1) => ({
+  x: amp * (0.62 * Math.sin(f * 0.031 * speed + ph) + 0.38 * Math.sin(f * 0.0137 * speed + ph * 2.3)),
+  y: amp * (0.62 * Math.cos(f * 0.027 * speed + ph * 1.7) + 0.38 * Math.sin(f * 0.0161 * speed + ph * 0.6)),
+});
+/** Crew walk a slow loop around their post. */
+const patrol = (f: number, ph: number, amp: number) => {
+  const heading = ph * 1.9;
+  const fwd = Math.sin(f * 0.0115 + ph * 3.1);
+  const side = Math.sin(f * 0.0083 + ph * 1.3) * 0.35;
+  const sh = shuffle(f, ph, 3, 1.4);
+  return { x: amp * (fwd * Math.cos(heading) - side * Math.sin(heading)) + sh.x, y: amp * 0.75 * (fwd * Math.sin(heading) + side * Math.cos(heading)) + sh.y };
+};
+/** Where dot i of the crowd is at f: most shuffle where they stand; one in six is strolling somewhere. */
+const crowdAt = (p: { x: number; y: number }, i: number, f: number) => {
+  const ph = seeded(i * 7.7 + 0.3) * Math.PI * 2;
+  const r = seeded(i * 3.1 + 0.9);
+  let x = p.x;
+  let y = p.y;
+  if (i % 6 === 0) {
+    const go = Math.sin(f * 0.0105 + ph * 4.1) * (14 + r * 16);
+    x += go * Math.cos(ph * 2.7);
+    y += go * Math.sin(ph * 2.7) * 0.8;
+  }
+  const sh = shuffle(f, ph, 2.2 + r * 3.5, 0.8 + r);
+  return { x: x + sh.x, y: y + sh.y };
+};
+const crewWalk = (c: { x: number; y: number }, i: number, f: number) => {
+  const ph = seeded(i * 5.3 + 0.7) * Math.PI * 2;
+  const w = patrol(f, ph, 18 + 14 * seeded(i * 2.9));
+  return { x: c.x + w.x, y: c.y + w.y };
+};
+
+/**
+ * The crowd and crew, walking about (web): a canvas redrawn every frame. On a
+ * phone build, or with reduce motion on, they're drawn once and stand still.
+ */
+function WalkingDots({ w, h }: { w: number; h: number }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    const k = (w / MAP_W) * dpr;
+    let raf = 0;
+    const start = performance.now();
+    const draw = () => {
+      const f = REDUCE ? 0 : ((performance.now() - start) / 1000) * 60;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(k, 0, 0, k, 0, 0);
+      for (const [lo, hi] of [
+        [0, 0.45],
+        [0.45, 0.6],
+        [0.6, 1],
+      ]) {
+        ctx.beginPath();
+        MAP_CROWD.forEach((p, i) => {
+          if (p.o < lo || p.o >= hi) return;
+          const q = crowdAt(p, i, f);
+          ctx.moveTo(q.x + 4.2, q.y);
+          ctx.arc(q.x, q.y, 4.2, 0, Math.PI * 2);
+        });
+        ctx.fillStyle = `rgba(255,255,255,${(lo + hi) / 2})`;
+        ctx.fill();
+      }
+      ctx.beginPath();
+      MAP_CREW.forEach((c, i) => {
+        const q = crewWalk(c, i, f);
+        ctx.moveTo(q.x + 11, q.y);
+        ctx.arc(q.x, q.y, 11, 0, Math.PI * 2);
+      });
+      ctx.fillStyle = VIOLET;
+      ctx.fill();
+      if (!REDUCE) raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => cancelAnimationFrame(raf);
+  }, [w]);
+  return <canvas ref={ref} width={Math.round(w * (window.devicePixelRatio || 1))} height={Math.round(h * (window.devicePixelRatio || 1))} style={{ position: 'absolute', left: 0, top: 0, width: w, height: h }} />;
+}
+
+const PIN = { x: 892, y: 606 };
+const ROUTE = [
+  { x: 640, y: 716 },
+  { x: 702, y: 738 },
+  { x: 778, y: 686 },
+  { x: 868, y: 616 },
+];
+const ROUTE_LEN = ROUTE.slice(1).map((p, i) => Math.hypot(p.x - ROUTE[i].x, p.y - ROUTE[i].y));
+const ROUTE_TOTAL = ROUTE_LEN.reduce((a, b) => a + b, 0);
+const VIOLET = '#A78BFA';
+const RED = '#FF453A';
+
+/** The festival from above, as in the launch film: the incident pulsing, Sam walking to it. */
+function SiteMap({ s }: { s: Sizes }) {
+  const w = s.phone ? Math.min(s.width - 48, 420) : clamp(s.width * 0.42, 360, 760);
+  const h = (w * MAP_H) / MAP_W;
   const walk = useSharedValue(0);
   const pulse = useSharedValue(0);
   useEffect(() => {
-    sway.set(withRepeat(withSequence(withTiming(1, { duration: 5000, easing: Easing.inOut(Easing.sin) }), withTiming(0, { duration: 5000, easing: Easing.inOut(Easing.sin) })), -1, false));
-    walk.set(withRepeat(withSequence(withDelay(900, withTiming(1, { duration: 2800, easing: Easing.inOut(Easing.quad) })), withDelay(1200, withTiming(0, { duration: 0 }))), -1, false));
+    walk.set(withRepeat(withSequence(withDelay(700, withTiming(1, { duration: 3400, easing: Easing.inOut(Easing.sin) })), withDelay(1400, withTiming(0, { duration: 0 }))), -1, false));
     pulse.set(withRepeat(withTiming(1, { duration: 1500, easing: Easing.out(Easing.cubic) }), -1, false));
-  }, [sway, walk, pulse]);
-
-  const plane = useAnimatedStyle(() => ({
-    transform: [{ perspective: 1800 }, { rotateX: '58deg' }, { rotateZ: `${-42 + sway.get() * 10}deg` }],
-  }));
-  const responder = useAnimatedStyle(() => ({
-    left: `${RESPONDER_FROM.x + (INCIDENT.x - RESPONDER_FROM.x) * walk.get()}%`,
-    top: `${RESPONDER_FROM.y + (INCIDENT.y - RESPONDER_FROM.y) * walk.get()}%`,
-  }));
-  const ring = useAnimatedStyle(() => ({ opacity: 0.7 * (1 - pulse.get()), transform: [{ scale: 0.5 + pulse.get() * 2.2 }] }));
-
+  }, [walk, pulse]);
+  const sam = useAnimatedStyle(() => {
+    let d = walk.get() * ROUTE_TOTAL;
+    let x = ROUTE[ROUTE.length - 1].x;
+    let y = ROUTE[ROUTE.length - 1].y;
+    for (let i = 0; i < ROUTE_LEN.length; i++) {
+      if (d <= ROUTE_LEN[i]) {
+        const k = d / ROUTE_LEN[i];
+        x = ROUTE[i].x + (ROUTE[i + 1].x - ROUTE[i].x) * k;
+        y = ROUTE[i].y + (ROUTE[i + 1].y - ROUTE[i].y) * k;
+        break;
+      }
+      d -= ROUTE_LEN[i];
+    }
+    return { left: `${(x / MAP_W) * 100}%`, top: `${(y / MAP_H) * 100}%` };
+  });
+  const ring = useAnimatedStyle(() => ({ opacity: 0.8 * (1 - pulse.get()), transform: [{ scale: 0.6 + pulse.get() * 2.4 }] }));
+  const u = MAP_W / w; // map units per screen pixel, for strokes that stay crisp at any size
   return (
-    <View style={{ width: size, height: size * 0.82, alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.View
-        style={[
-          {
-            width: size * 0.82,
-            height: size * 0.82,
-            borderRadius: 28,
-            backgroundColor: 'rgba(255,255,255,0.1)',
-            borderWidth: 2,
-            borderColor: 'rgba(255,255,255,0.35)',
-          },
-          plane,
-        ]}>
-        {ZONES.map((z, i) => (
-          <View
-            key={i}
-            style={{
-              position: 'absolute',
-              left: `${z.x}%`,
-              top: `${z.y}%`,
-              width: `${z.w}%`,
-              height: `${z.h}%`,
-              borderRadius: 8,
-              backgroundColor: z.color,
-              shadowColor: '#140D1E',
-              shadowOpacity: 0.9,
-              shadowRadius: 0,
-              shadowOffset: { width: 6, height: 6 },
-            }}
-          />
+    <View style={{ width: w, height: h, borderRadius: 28, overflow: 'hidden', backgroundColor: '#000000', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' }}>
+      <Svg width={w} height={h} viewBox={`0 0 ${MAP_W} ${MAP_H}`} style={{ position: 'absolute', left: 0, top: 0 }}>
+        {MAP_PATHS.map((d, i) => (
+          <Path key={i} d={d} stroke="rgba(255,255,255,0.085)" strokeWidth={32} strokeLinecap="round" strokeLinejoin="round" fill="none" />
         ))}
-        {DOTS.map((d, i) => (
-          <View key={i} style={{ position: 'absolute', left: `${d.x}%`, top: `${d.y}%`, width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFFFFF', opacity: 0.85 }} />
+        <Rect x={40} y={40} width={MAP_W - 80} height={MAP_H - 80} rx={60} fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth={2.5 * u} strokeDasharray={`${14 * u} ${10 * u}`} />
+        {MAP_ZONES.map((z) => (
+          <G key={z.name}>
+            <Rect x={z.x} y={z.y} width={z.w} height={z.h} rx={26} fill="rgba(255,255,255,0.045)" stroke="rgba(255,255,255,0.5)" strokeWidth={2 * u} />
+            {z.stage && <Rect x={z.x + 40} y={z.y + 24} width={z.w - 80} height={50} rx={12} fill="rgba(255,255,255,0.16)" />}
+          </G>
         ))}
-        <View style={{ position: 'absolute', left: `${INCIDENT.x}%`, top: `${INCIDENT.y}%`, width: 0, height: 0 }}>
-          <Animated.View style={[{ position: 'absolute', left: -22, top: -22, width: 44, height: 44, borderRadius: 22, borderWidth: 3, borderColor: '#E07A6E' }, ring]} />
-          <View style={{ position: 'absolute', left: -11, top: -11, width: 22, height: 22, borderRadius: 11, backgroundColor: '#E07A6E', borderWidth: 3, borderColor: '#F4F1EA' }} />
-        </View>
-        <Animated.View style={[{ position: 'absolute', width: 0, height: 0 }, responder]}>
-          <View style={{ position: 'absolute', left: -10, top: -10, width: 20, height: 20, borderRadius: 10, backgroundColor: '#E3C27A', borderWidth: 3, borderColor: '#170F22' }} />
-        </Animated.View>
+        {!WEB && MAP_CROWD.map((p, i) => <Circle key={i} cx={p.x} cy={p.y} r={4.2} fill="#FFFFFF" opacity={p.o} />)}
+        {!WEB && MAP_CREW.map((c, i) => <Circle key={i} cx={c.x} cy={c.y} r={11} fill={VIOLET} />)}
+      </Svg>
+      {WEB && <WalkingDots w={w} h={h} />}
+      <Svg width={w} height={h} viewBox={`0 0 ${MAP_W} ${MAP_H}`} style={{ position: 'absolute', left: 0, top: 0 }}>
+        {MAP_ZONES.map((z) => {
+          const b = labelBox(z);
+          return (
+            <SvgText key={z.name} x={b.x + 22} y={b.y + b.h / 2 + labelPx(z) * 0.36} fill="#FFFFFF" fillOpacity={0.92} fontSize={labelPx(z)} fontWeight="700" letterSpacing={2} fontFamily={APPLE}>
+              {z.name}
+            </SvgText>
+          );
+        })}
+        <Polyline points={ROUTE.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={VIOLET} strokeOpacity={0.3} strokeWidth={10 * u} strokeLinecap="round" strokeLinejoin="round" />
+        <Polyline points={ROUTE.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke="#D9CCFF" strokeWidth={3 * u} strokeLinecap="round" strokeLinejoin="round" />
+      </Svg>
+      <View style={{ position: 'absolute', left: `${(PIN.x / MAP_W) * 100}%`, top: `${(PIN.y / MAP_H) * 100}%`, width: 0, height: 0 }}>
+        <Animated.View style={[{ position: 'absolute', left: -12, top: -12, width: 24, height: 24, borderRadius: 12, borderWidth: 2.5, borderColor: RED }, ring]} />
+        <View style={{ position: 'absolute', left: -9, top: -9, width: 18, height: 18, borderRadius: 9, backgroundColor: RED, borderWidth: 2.5, borderColor: '#FFFFFF' }} />
+      </View>
+      <Animated.View style={[{ position: 'absolute', width: 0, height: 0 }, sam]}>
+        <View style={{ position: 'absolute', left: -9, top: -9, width: 18, height: 18, borderRadius: 9, backgroundColor: VIOLET, borderWidth: 2.5, borderColor: '#FFFFFF' }} />
       </Animated.View>
     </View>
   );
@@ -649,14 +783,13 @@ const SLIDES: Slide[] = [
     ],
   },
 
-  /* ===== 02 Solution ===== */
+  /* ===== Introducing Ground Control ===== */
   {
     theme: 'plum',
     notes: 'So we built Ground Control. Every call heard, every decision human.',
     lines: (s) => [
-      <Section key="sec" s={s} n="02" name="Solution" />,
-      <Muted key="meet" s={s}>
-        Meet
+      <Muted key="intro" s={s}>
+        Introducing
       </Muted>,
       <Extrude key="h" px={clamp(s.width * (s.phone ? 0.12 : 0.072), 48, 132)}>
         Ground Control.
@@ -666,12 +799,12 @@ const SLIDES: Slide[] = [
         Every call heard. Every decision human.
       </Big>,
     ],
-    aside: (s) => <IsoMap s={s} />,
+    aside: (s) => <SiteMap s={s} />,
   },
   {
     theme: 'black',
     hasButton: true,
-    notes: 'The launch film plays by itself (30 seconds). When it ends, press → to go on.',
+    notes: 'The launch film plays by itself (about 45 seconds). When it ends, press → to go on.',
     lines: () => [],
     full: (s) => <LaunchFilm s={s} />,
   },
@@ -720,7 +853,7 @@ const SLIDES: Slide[] = [
     ],
   },
 
-  /* ===== 03 Build ===== */
+  /* ===== 02 Build ===== */
   {
     theme: 'midnight',
     hasButton: true,
@@ -791,7 +924,7 @@ function OnAir({ s }: { s: Sizes }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 2, borderColor: c.ink, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 }}>
       <Animated.View style={[{ width: 14, height: 14, borderRadius: 7, backgroundColor: c.ink }, dot]} />
-      <Text style={t(s.label, '800', c.ink, { letterSpacing: 1.5 })}>03 · ON AIR</Text>
+      <Text style={t(s.label, '800', c.ink, { letterSpacing: 1.5 })}>02 · ON AIR</Text>
     </View>
   );
 }
