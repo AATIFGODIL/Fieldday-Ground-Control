@@ -14,7 +14,7 @@
  */
 import { router } from 'expo-router';
 import { createContext, isValidElement, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type TextStyle } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions, type TextStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
@@ -323,12 +323,12 @@ function CTA({ s, title, onPress }: { s: Sizes; title: string; onPress: () => vo
 /* ------------------------------ the inquiries ------------------------------ */
 
 const INQUIRIES = [
-  { to: 10, name: 'Astroworld', where: 'Houston, 2021', line: 'Medics and firefighters weren’t on the same radio.' },
-  { to: 22, name: 'Manchester Arena', where: 'Manchester, 2017', line: 'The emergency response was “far below the standard it should have been.”' },
-  { to: 159, name: 'Itaewon', where: 'Seoul, 2022', line: 'Police got 11 calls warning of a crush, the first four hours before.' },
+  { to: 10, name: 'Astroworld', where: 'Houston, 2021' },
+  { to: 22, name: 'Manchester Arena', where: 'Manchester, 2017' },
+  { to: 159, name: 'Itaewon', where: 'Seoul, 2022' },
 ];
 
-/** Three disasters side by side: how many died, where, and what went wrong. */
+/** Three disasters side by side: how many died, and where. What went wrong is in the speaker notes. */
 function Inquiries({ s }: { s: Sizes }) {
   const c = useColors();
   return (
@@ -339,7 +339,6 @@ function Inquiries({ s }: { s: Sizes }) {
           <Text style={t(s.label, '700', c.muted, { textTransform: 'uppercase', letterSpacing: 0.6 })}>people died</Text>
           <Text style={[t(clamp(s.width * 0.02, 22, 34), '800', c.ink), { marginTop: 10 }]}>{x.name}</Text>
           <Text style={t(s.label, '500', c.grey)}>{x.where}</Text>
-          <Text style={[t(clamp(s.width * 0.018, 21, 30), '600', c.muted), { marginTop: 10 }]}>{x.line}</Text>
         </View>
       ))}
     </View>
@@ -1421,6 +1420,33 @@ function Layer({ i, s, exiting, dir }: { i: number; s: Sizes; exiting: boolean; 
   );
 }
 
+/* ------------------------------- speaker notes ------------------------------- */
+
+// Notes are editable in the deck (press N). Edits are saved in this browser,
+// keyed by the slide's own note, so they stay with the slide if slides move.
+const NOTES_KEY = 'pitch-notes-v1';
+const noteKeyOf = (slide: Slide) => {
+  let h = 5381;
+  for (let i = 0; i < slide.notes.length; i++) h = ((h * 33) ^ slide.notes.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+};
+function loadNoteEdits(): Record<string, string> {
+  if (!WEB) return {};
+  try {
+    return JSON.parse(window.localStorage.getItem(NOTES_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+}
+function saveNoteEdits(edits: Record<string, string>) {
+  if (!WEB) return;
+  try {
+    window.localStorage.setItem(NOTES_KEY, JSON.stringify(edits));
+  } catch {
+    // Private browsing or storage full: the edit still shows until the page reloads.
+  }
+}
+
 export default function Pitch() {
   const s = useSizes();
   const [index, setIndex] = useState(() => {
@@ -1429,6 +1455,7 @@ export default function Pitch() {
     return Number.isFinite(n) ? clamp(n - 1, 0, SLIDES.length - 1) : 0;
   });
   const [notes, setNotes] = useState(false);
+  const [noteEdits, setNoteEdits] = useState<Record<string, string>>(loadNoteEdits);
   const [full, setFull] = useState(false);
   const slide = SLIDES[index];
   const colors = PALETTE[slide.theme];
@@ -1508,6 +1535,11 @@ export default function Pitch() {
   useEffect(() => {
     if (!WEB) return;
     const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable)) {
+        if (e.key === 'Escape') el.blur();
+        return;
+      }
       if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'].includes(e.key)) {
         e.preventDefault();
         goRef.current(1);
@@ -1573,12 +1605,37 @@ export default function Pitch() {
 
         {notes && (
           <View style={styles.notes}>
-            <ScrollView contentContainerStyle={{ padding: 32, gap: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
               <Text style={t(24, '700', '#FFFFFF')}>
                 Notes · slide {index + 1} of {SLIDES.length}
               </Text>
-              <Text style={t(24, '500', '#FFFFFF', { lineHeight: 34 })}>{slide.notes}</Text>
-            </ScrollView>
+              {noteEdits[noteKeyOf(slide)] !== undefined && <Text style={t(15, '700', '#A78BFA')}>Edited</Text>}
+              <View style={{ flex: 1 }} />
+              {noteEdits[noteKeyOf(slide)] !== undefined && (
+                <Pressable
+                  onPress={() => {
+                    const { [noteKeyOf(slide)]: _, ...rest } = noteEdits;
+                    setNoteEdits(rest);
+                    saveNoteEdits(rest);
+                  }}
+                  style={({ hovered }) => ({ borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6, backgroundColor: hovered ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.08)' })}>
+                  <Text style={t(15, '600', '#FFFFFF')}>Reset to original</Text>
+                </Pressable>
+              )}
+              <Text style={t(14, '500', 'rgba(255,255,255,0.5)')}>Saved in this browser · Esc to stop editing · N to hide</Text>
+            </View>
+            <TextInput
+              value={noteEdits[noteKeyOf(slide)] ?? slide.notes}
+              onChangeText={(text) => {
+                const next = { ...noteEdits, [noteKeyOf(slide)]: text };
+                setNoteEdits(next);
+                saveNoteEdits(next);
+              }}
+              multiline
+              placeholder="What to say on this slide…"
+              placeholderTextColor="rgba(255,255,255,0.35)"
+              style={[t(24, '500', '#FFFFFF', { lineHeight: 34 }), { flex: 1, textAlignVertical: 'top', padding: 16, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.06)' }]}
+            />
           </View>
         )}
       </Animated.View>
@@ -1589,5 +1646,5 @@ export default function Pitch() {
 const styles = StyleSheet.create({
   track: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 6 },
   fullBtn: { position: 'absolute', top: 24, right: 24, width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
-  notes: { position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '50%', backgroundColor: '#1C1C1E' },
+  notes: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '45%', padding: 28, gap: 14, backgroundColor: '#1C1C1E' },
 });
