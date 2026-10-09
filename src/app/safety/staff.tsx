@@ -97,7 +97,7 @@ export default function Staff() {
               if (moved === undefined) return;
               setDone({
                 key: nextKey(),
-                text: moved ? `Moving ${moved === 1 ? '1 person' : `${moved} people`}. They’ve been told where to go.` : 'New targets set.',
+                text: moved ? `Asked ${moved === 1 ? '1 person' : `${moved} people`} to move. Waiting for their acceptance.` : 'New targets set.',
               });
             }}
           />

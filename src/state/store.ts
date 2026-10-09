@@ -483,27 +483,7 @@ export function updateZone(id: string, patch: Partial<Zone>) {
 }
 
 export function applyPlacement(moves: PlacementMove[], source: 'ai' | 'rules' | 'manual') {
-  const s = get();
-  const vols = { ...s.volunteers };
-  for (const m of moves) {
-    const v = vols[m.volunteerId];
-    if (!v) continue;
-    vols[m.volunteerId] = { ...v, zoneId: m.toZoneId };
-  }
-  set({ volunteers: vols });
-  // Walk each moved volunteer to a spot inside their new zone.
-  for (const m of moves) {
-    const zone = zoneById(m.toZoneId);
-    if (!zone || !s.positions[m.volunteerId]) continue;
-    const xs = zone.polygon.map((p) => p.x);
-    const ys = zone.polygon.map((p) => p.y);
-    const target = {
-      x: Math.min(...xs) + 6 + Math.random() * (Math.max(...xs) - Math.min(...xs) - 12),
-      y: Math.min(...ys) + 6 + Math.random() * (Math.max(...ys) - Math.min(...ys) - 12),
-    };
-    if (vols[m.volunteerId].status === 'checked_in') startMovement(m.volunteerId, target);
-    else set({ positions: { ...get().positions, [m.volunteerId]: target } });
-  }
+  moveStaff(moves, 'Please move to your new post.');
   audit(`Applied placement plan (${moves.length} moves, ${source})`);
   // Gaps may now be closed; allow future alerts for zones that regress.
   set({ coverageAlerted: {} });
@@ -528,9 +508,7 @@ function moveStaff(moves: { volunteerId: string; toZoneId: string; distanceM?: n
     const v = get().volunteers[m.volunteerId];
     const zone = zoneById(m.toZoneId);
     if (!v || !zone) continue;
-    set({ volunteers: { ...get().volunteers, [v.id]: { ...v, zoneId: zone.id, movedAt: now } } });
-    if (v.status === 'checked_in') startMovement(v.id, spotIn(zone));
-    else set({ positions: { ...get().positions, [v.id]: spotIn(zone) } });
+    set({ volunteers: { ...get().volunteers, [v.id]: { ...v, pendingMove: { toZoneId: zone.id, requestedAt: now } } } });
     notify(
       { to: v.id, kind: 'moved', title: `Please move to ${zone.name}`, body: note },
       { phone: { title: `Move to ${zone.name}${m.distanceM ? ` · ${m.distanceM} m` : ''}`, body: note.length > 60 ? `${note.slice(0, 59)}…` : note } },
@@ -600,8 +578,7 @@ export function endSurge(id: string, sendBack: boolean) {
       const zone = zoneById(m.fromZoneId!);
       const v = get().volunteers[m.volunteerId];
       if (!zone || !v) continue;
-      set({ volunteers: { ...get().volunteers, [v.id]: { ...v, zoneId: zone.id } } });
-      startMovement(v.id, spotIn(zone));
+      set({ volunteers: { ...get().volunteers, [v.id]: { ...v, pendingMove: { toZoneId: zone.id, requestedAt: simNow() } } } });
       notify(
         { to: v.id, kind: 'moved', title: `You can head back to ${zone.name}`, body: `${surge.title} is over. Thanks for your help.` },
         { phone: { title: `Back to ${zone.name}`, body: 'The surge is over. Thanks!' } },
@@ -611,6 +588,20 @@ export function endSurge(id: string, sendBack: boolean) {
   }
   audit(`Ended "${surge.title}"${sent ? `; sent ${sent} back` : ''}`);
   set({ coverageAlerted: {} });
+}
+
+/** A staffing request only becomes a move after its recipient accepts. */
+export function respondToMove(accept: boolean) {
+  const v = get().volunteers[get().currentUserId ?? ''];
+  const pending = v?.pendingMove;
+  if (!v || !pending) return;
+  const zone = zoneById(pending.toZoneId);
+  if (!zone) return;
+  set({ volunteers: { ...get().volunteers, [v.id]: { ...v, pendingMove: undefined, ...(accept ? { zoneId: zone.id, movedAt: simNow() } : {}) } } });
+  if (accept && v.status === 'checked_in') startMovement(v.id, spotIn(zone));
+  for (const n of get().notices) if (n.to === v.id && n.kind === 'moved' && n.at <= pending.requestedAt) markNoticeRead(n.id);
+  notify({ to: safetyLeadId(), kind: 'info', title: `${v.name} ${accept ? 'accepted the move' : 'can’t move'}`, body: zone.name });
+  audit(`${accept ? 'Accepted' : 'Declined'} move to ${zone.name}`, { actorId: v.id });
 }
 
 /* --------------------------------- incidents -------------------------------- */
@@ -828,7 +819,7 @@ export function approve(incidentId: string, plan: ResponsePlan): { error: string
       },
       { device: true },
     );
-    startMovement(d.volunteerId, inc.location, d.id);
+
   }
 
   if (check.escalated) {
@@ -852,7 +843,7 @@ export function approve(incidentId: string, plan: ResponsePlan): { error: string
     if (lead) {
       notify(
         { to: lead, kind: 'info', title: `${inc.ref} response approved`, body: `Approved by ${user.name}.`, incidentId },
-        { phone: { title: 'Help is on the way', body: `${INCIDENT_TYPE_LABELS[inc.type]} · ${zone?.name ?? 'your zone'}` } },
+        { phone: { title: 'Response sent · awaiting acceptance', body: `${INCIDENT_TYPE_LABELS[inc.type]} · ${zone?.name ?? 'your zone'}` } },
       );
     }
   }
@@ -866,6 +857,8 @@ export function setBrief(dispatchId: string, brief: Brief) {
 export function setDispatchStatus(dispatchId: string, status: DispatchStatus, actorId?: string) {
   const d = get().dispatches.find((x) => x.id === dispatchId);
   if (!d || d.status === status) return;
+  if (status === 'acknowledged' && d.status !== 'notified') return;
+  if (status === 'on_scene' && d.status !== 'acknowledged') return;
   patchDispatch(dispatchId, { status });
   const inc = get().incidents.find((i) => i.id === d.incidentId);
   const v = get().volunteers[d.volunteerId];
@@ -876,6 +869,7 @@ export function setDispatchStatus(dispatchId: string, status: DispatchStatus, ac
     declined: "Can't attend",
   };
   audit(`${labels[status]} (${inc?.ref})`, { actorId: actorId ?? d.volunteerId, incidentId: d.incidentId });
+  if (status === 'acknowledged' && inc) startMovement(d.volunteerId, inc.location, d.id);
   if (status === 'declined') {
     const { [d.volunteerId]: _, ...movements } = get().movements;
     set({ movements });
@@ -1010,7 +1004,7 @@ export function tick(dtRealMs: number) {
     set({ positions, movements });
     for (const m of arrived) {
       const d = m.dispatchId && get().dispatches.find((x) => x.id === m.dispatchId);
-      if (d && (d.status === 'notified' || d.status === 'acknowledged')) setDispatchStatus(d.id, 'on_scene');
+      if (d && (d.status === 'acknowledged')) setDispatchStatus(d.id, 'on_scene');
     }
   }
 

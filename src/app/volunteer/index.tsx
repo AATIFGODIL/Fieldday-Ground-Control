@@ -11,7 +11,7 @@ import { Spacing } from '@/constants/theme';
 import { INCIDENT_TYPE_LABELS } from '@/domain/types';
 import { useSimNow } from '@/hooks/use-sim-now';
 import { useTheme } from '@/hooks/use-theme';
-import { markNoticeRead, useStore, zoneById } from '@/state/store';
+import { markNoticeRead, respondToMove, useStore, zoneById } from '@/state/store';
 
 /** A volunteer's home: am I needed, how do I report, am I on shift. */
 export default function VolunteerHome() {
@@ -68,6 +68,7 @@ export default function VolunteerHome() {
         );
       })}
 
+      {me.pendingMove && <Card tone="strong"><Txt variant="heading">Move to {zoneById(me.pendingMove.toZoneId)?.name}?</Txt><Row><Button title="I’m on my way" onPress={() => respondToMove(true)} /><Button title="Can’t go" variant="secondary" onPress={() => respondToMove(false)} /></Row></Card>}
       {moved.map((n) => (
         <Appear key={n.id}>
           <Card tone="strong">

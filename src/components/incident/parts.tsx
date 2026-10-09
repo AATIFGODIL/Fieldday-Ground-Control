@@ -24,7 +24,7 @@ export const STATUS_LABEL: Record<IncidentStatus, string> = {
   logged: 'Finding the nearest help…',
   suggested: 'Waiting for approval',
   no_suggestion: 'Choose who to send',
-  approved: 'Help is on the way',
+  approved: 'Response sent',
   resolved: 'Resolved',
   merged: 'Merged with another report',
 };
@@ -75,7 +75,7 @@ export function IncidentRow({ incident, now, links }: { incident: Incident; now:
   const status = viewerIsLead
     ? STATUS_LABEL[incident.status]
     : incident.status === 'approved'
-      ? 'Help is on the way'
+      ? 'Response sent'
       : incident.status === 'resolved' || incident.status === 'merged'
         ? 'Closed'
         : 'Sent to the safety lead';
@@ -527,19 +527,19 @@ export function DispatchProgress({ d }: { d: Dispatch }) {
   const target = d.path[d.path.length - 1];
   const remaining =
     movement && movement.dispatchId === d.id ? Math.round(movement.total - movement.travelled) : pos && target ? Math.round(dist(pos, target)) : 0;
-  const statusText = { notified: 'Told', acknowledged: 'On the way', on_scene: 'There', declined: 'Can’t go' }[d.status];
-  const pct = d.status === 'on_scene' ? 1 : d.distanceM > 0 ? Math.min(1, Math.max(0, 1 - remaining / d.distanceM)) : 0;
+  const statusText = { notified: 'Waiting for response', acknowledged: 'On the way', on_scene: 'There', declined: 'Can’t go' }[d.status];
+  const pct = d.status === 'notified' ? 0 : d.status === 'on_scene' ? 1 : d.distanceM > 0 ? Math.min(1, Math.max(0, 1 - remaining / d.distanceM)) : 0;
   return (
     <View style={{ gap: Spacing.two }}>
-      <Row style={{ justifyContent: 'space-between' }}>
-        <Row>
-          <Avatar name={v?.name} size={40} inverted={d.status === 'on_scene'} />
-          <View>
-            <Txt variant="strong">{v?.name}</Txt>
-            <Txt variant="caption">{d.status === 'on_scene' ? 'Arrived' : d.status === 'declined' ? 'Said they can’t go' : `${remaining} m to go`}</Txt>
-          </View>
-        </Row>
-        <Pill label={statusText} tone={d.status === 'on_scene' ? 'success' : d.status === 'declined' ? undefined : 'accent'} />
+      <Row style={{ alignItems: 'flex-start' }}>
+        <Avatar name={v?.name} size={40} inverted={d.status === 'on_scene'} />
+        <View style={{ flex: 1, minWidth: 0, gap: Spacing.one }}>
+          <Row style={{ flexWrap: 'wrap', justifyContent: 'space-between' }}>
+            <Txt variant="strong" style={{ flexShrink: 1 }}>{v?.name}</Txt>
+            <Pill label={statusText} tone={d.status === 'on_scene' ? 'success' : d.status === 'declined' ? undefined : 'accent'} />
+          </Row>
+          <Txt variant="caption">{d.status === 'notified' ? 'Asked to attend · not yet accepted' : d.status === 'on_scene' ? 'Arrived' : d.status === 'declined' ? 'Said they can’t go' : `${remaining} m to go`}</Txt>
+        </View>
       </Row>
       {d.status !== 'declined' && (
         <View style={[styles.track, { backgroundColor: t.backgroundSelected }]}>

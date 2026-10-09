@@ -57,6 +57,7 @@ export interface Volunteer {
   checkedInAt?: number;
   /** When the safety lead last moved them to another zone (so we don't keep moving the same person). */
   movedAt?: number;
+  pendingMove?: { toZoneId: string; requestedAt: number };
 }
 
 export type ZoneKind =
